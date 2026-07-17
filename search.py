@@ -29,6 +29,7 @@ from config import (
     LLM_API_BASE,
     LLM_API_KEY,
     LLM_MODEL,
+    LLM_MODEL_FAST,
     ROUTE_SYSTEM_PROMPT,
 )
 from elasticsearch import Elasticsearch
@@ -139,7 +140,7 @@ def route_decision(query: str, local_context: str) -> str:
                 "Content-Type": "application/json",
             },
             json={
-                "model": LLM_MODEL,
+                "model": LLM_MODEL_FAST,  # 路由判断用 fast 模型（v4flash）加速
                 "messages": [
                     {"role": "system", "content": ROUTE_SYSTEM_PROMPT},
                     {"role": "user", "content": f"""用户问题: {query}
@@ -278,21 +279,14 @@ def hybrid_search(query: str, k: int = None) -> dict:
     route = route_decision(query, local_context)
     print(f"🔀 Route 决策: {route}")
 
-    # 4. 根据路由决定是否调 Tavily
-    web_results = []
-    has_web = False
-
-    if route == "web":
-        try:
-            web_results = tavily_search(query)
-            has_web = True
-        except Exception as e:
-            print(f"⚠️ Tavily 搜索失败: {e}")
+    # 4. 已禁用网络搜索：即便路由判定 web，也不调用 Tavily
+    #    路由结果只作为标签展示（"本地足够" / "本地不足"）
+    print(f"ℹ️ 路由判定={route}，已禁用网络搜索，仅用本地结果")
 
     return {
         "local": local_results,
-        "web": web_results,
-        "has_web": has_web,
+        "web": [],
+        "has_web": False,
         "route": route,
     }
 

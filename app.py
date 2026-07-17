@@ -30,11 +30,10 @@ def ask_llm_stream(query: str, context: str):
 
     system_prompt = """你是一个专业的保险条款问答助手。请根据提供的参考文档回答用户问题。
 要求：
-1. 仅基于提供的参考文档和网络搜索结果回答
+1. 仅基于提供的参考文档回答
 2. 如果参考文档不足以回答，明确说明
-3. 引用来源（文档标题 / 网页链接）
-4. 用中文回答，专业、简洁、准确
-5. 如果有网络搜索结果，标注为 🌐 网络来源"""
+3. 引用来源（文档标题）
+4. 用中文回答，专业、简洁、准确"""
     try:
         with httpx.Client(
             verify=False,
@@ -126,19 +125,12 @@ def respond(message, history):
         route = search_result.get("route", "local")
         _current_route = route
         elapsed = time.time() - start_time
-        tag = "🌐 网络补充" if route == "web" else "📚 本地知识库"
-        header = f"> {tag} *(耗时 {elapsed:.1f}s)*\n\n"
+        header = f"> 📚 本地知识库 *(耗时 {elapsed:.1f}s)*\n\n"
         accumulated = header
         msgs = msgs[:-1] + [{"role": "assistant", "content": accumulated}]
         yield msgs
         for token in ask_llm_stream(text, context):
             accumulated += token
-            msgs = msgs[:-1] + [{"role": "assistant", "content": accumulated}]
-            _latest_msgs = copy.deepcopy(msgs)
-            yield msgs
-        if search_result["has_web"]:
-            refs = [f"- 🌐 [{r['title']}]({r['url']})" for r in search_result["web"]]
-            accumulated += "\n\n---\n**🌐 来源:**\n" + "\n".join(refs)
             msgs = msgs[:-1] + [{"role": "assistant", "content": accumulated}]
             _latest_msgs = copy.deepcopy(msgs)
             yield msgs

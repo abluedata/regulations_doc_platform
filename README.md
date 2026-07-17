@@ -1,8 +1,8 @@
-# InsuraQuery — AI 保险文档智能问答系统
+# InsuraQuery — 合同智答文档智能问答系统
 
-**保险智答** 是一个基于 **Elasticsearch** + **向量检索** + **大语言模型** 的保险条款智能问答系统。它能够：
+**合同智答** 是一个基于 **Elasticsearch** + **向量检索** + **大语言模型** 的合同条款智能问答系统。它能够：
 
-- 📥 将保险文档（TXT/PDF）分块后使用 **SiliconFlow Embeddings**（`BAAI/bge-large-zh-v1.5`）向量化，存入 Elasticsearch
+- 📥 将合同文档（TXT/PDF）分块后使用 **SiliconFlow Embeddings**（`BAAI/bge-large-zh-v1.5`）向量化，存入 Elasticsearch
 - 🔍 混合检索（BM25 + 向量相似度 + RRF 融合）召回最相关的文档片段
 - 🧠 通过 LLM 路由判断本地知识是否足够回答，不足时自动通过 **Tavily** 搜索互联网补充
 - 💬 支持流式对话、收藏历史记录、推荐问题快捷入口

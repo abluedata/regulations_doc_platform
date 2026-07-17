@@ -1,6 +1,6 @@
-# regulations_doc_platform  — 基于合同审核的下一代agent平台
+# regulations_doc_platform  — 合同法规审核agent平台
 
-**基于合同审核的下一代agent平台** 是一个基于 **Elasticsearch** + **向量检索** + **大语言模型** 的合同条款智能问答系统。它能够：
+**合同法规审核agent平台** 是一个基于 **Elasticsearch** + **向量检索** + **大语言模型** 的合同条款智能问答系统。它能够：
 
 - 📥 将合同文档（TXT/PDF）分块后使用 **SiliconFlow Embeddings**（`BAAI/bge-large-zh-v1.5`）向量化，存入 Elasticsearch
 - 🔍 混合检索（BM25 + 向量相似度 + RRF 融合）召回最相关的文档片段

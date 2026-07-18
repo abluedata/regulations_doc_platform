@@ -9,6 +9,8 @@
   3. 一次 LLM 调用出完整回答（3-5 秒）
 """
 
+import logging
+
 import httpx
 
 from config import (
@@ -17,6 +19,19 @@ from config import (
     LLM_MODEL_FAST,
     PARALLEL_SEARCH_K,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def _safe_log(msg: str) -> None:
+    try:
+        logger.info(msg)
+    except Exception:
+        pass
+    try:
+        print(msg, flush=True)
+    except OSError:
+        pass
 
 
 # ─── 搜索 ────────────────────────────────────────────────────
@@ -37,7 +52,8 @@ SYSTEM_PROMPT = """你是一个专业的保险条款问答助手。请根据提�
 2. 如果文档不足以回答，明确说明
 3. 引用来源（文档标题 + chunk 编号）
 4. 用中文回答，专业、简洁、准确
-5. 如果是多文档对比，用表格形式呈现"""
+5. 如果是多文档对比，用表格形式呈现
+6. 如果参考文档包含表格，请用散文总结要点并引用来源；不要逐格列出每个单元格；系统会在回答后附加原文表格"""
 
 
 def parallel_qa(query: str) -> dict:
@@ -46,12 +62,12 @@ def parallel_qa(query: str) -> dict:
     Returns:
         dict: {"final_answer": str, "chunks_used": int}
     """
-    print(f"\n🚀 大上下文模式: \"{query}\"")
+    _safe_log(f"大上下文模式: {query!r}")
 
     # 1. 搜索
-    print("🔍 搜索 chunks ...")
+    _safe_log("搜索 chunks ...")
     chunks = parallel_search(query)
-    print(f"   → {len(chunks)} 个 chunks")
+    _safe_log(f"  → {len(chunks)} 个 chunks")
 
     if not chunks:
         return {"final_answer": "未检索到相关文档内容", "chunks_used": 0}
@@ -66,7 +82,7 @@ def parallel_qa(query: str) -> dict:
     context = "\n\n---\n\n".join(context_parts)
 
     # 3. 一次 LLM
-    print(f"🧠 生成回答（{len(context)} 字符 context，fast model）...")
+    _safe_log(f"生成回答（{len(context)} 字符 context，fast model）...")
     try:
         resp = httpx.post(
             f"{LLM_API_BASE}/chat/completions",
@@ -97,7 +113,8 @@ def parallel_qa(query: str) -> dict:
         final_answer = resp.json()["choices"][0]["message"]["content"]
     except Exception as e:
         # 流式降级
-        from app import ask_llm_stream
+        from qa_service import ask_llm_stream
+
         final_answer = ""
         for token in ask_llm_stream(query, context):
             final_answer += token

@@ -21,6 +21,11 @@ def _env(name: str, default: str = "") -> str:
     return os.getenv(name, default).strip()
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    v = _env(name, "true" if default else "false").lower()
+    return v in ("1", "true", "yes", "on")
+
+
 # ─── Elasticsearch ─────────────────────────────────────────
 ES_HOST = _env("ES_HOST", "https://localhost:9200")
 ES_USER = _env("ES_USER", "elastic")
@@ -46,7 +51,10 @@ CHUNK_SIZE = 512        # 单 chunk 字符数（中文保险条款按字符近�
 CHUNK_OVERLAP = 128     # chunk 间重叠字符数
 
 # ─── 文档目录 ────────────────────────────────────────────────
-DOCS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "docs")
+_ROOT = Path(__file__).resolve().parent
+DOCS_DIR = os.path.join(str(_ROOT), "docs")
+# 上传/解析产物根目录（与 .chat_data 并列）
+DATA_ROOT = Path(_env("DATA_ROOT", str(_ROOT / ".data")))
 
 # ─── 并行问答参数 ────────────────────────────────────────────
 PARALLEL_SEARCH_K = 15              # 并行问答阶段取 chunks 数量
@@ -54,6 +62,12 @@ HYBRID_SEARCH_K = 10                # 普通搜索最终返回条数
 HYBRID_NUM_CANDIDATES = 100         # 向量搜索候选数
 RRF_RANK_CONSTANT = 60              # RRF 排名常数 (k=60)
 BM25_TITLE_BOOST = 3.0              # title 字段 BM25 权重
+
+# ─── 表格问答参数 ────────────────────────────────────────────
+ANSWER_ATTACH_TABLES = _env_bool("ANSWER_ATTACH_TABLES", True)
+ANSWER_MAX_TABLES = int(_env("ANSWER_MAX_TABLES", "2"))
+TABLE_CONTEXT_MAX_CHARS = int(_env("TABLE_CONTEXT_MAX_CHARS", "2000"))
+
 
 # ─── LLM 路由 ────────────────────────────────────────────────
 LLM_API_BASE = _env("LLM_API_BASE", "https://api.openai.com/v1")

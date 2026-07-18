@@ -8,6 +8,7 @@
     → 不足: 再调用 Tavily 补充
 """
 import json
+import logging
 
 import httpx
 import requests
@@ -31,8 +32,29 @@ from config import (
     LLM_MODEL,
     LLM_MODEL_FAST,
     ROUTE_SYSTEM_PROMPT,
+    TABLE_CONTEXT_MAX_CHARS,
 )
 from elasticsearch import Elasticsearch
+
+from table_utils import (
+    looks_like_html_table,
+    looks_like_markdown_table,
+    normalize_table_fields,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _safe_log(msg: str, level: int = logging.INFO) -> None:
+    """写日志；Windows 后台进程 stdout 损坏时 print 会抛 [Errno 22]，不可直接 print。"""
+    try:
+        logger.log(level, msg)
+    except Exception:
+        pass
+    try:
+        print(msg, flush=True)
+    except OSError:
+        pass
 
 
 # ─── Embedding 客户端 ──────────────────────────────────────
@@ -71,10 +93,10 @@ def get_embeddings(texts: list[str], task: str = "retrieval.query", max_retries:
             if attempt < max_retries:
                 import time
                 wait = 2 ** attempt
-                print(f"⚠️ Embedding 重试 {attempt+1}/{max_retries}: {e}，等待 {wait}s")
+                _safe_log(f"Embedding 重试 {attempt+1}/{max_retries}: {e}，等待 {wait}s", logging.WARNING)
                 time.sleep(wait)
             else:
-                print(f"⚠️ Embedding 最终失败 ({max_retries+1} 次): {e}")
+                _safe_log(f"Embedding 最终失败 ({max_retries+1} 次): {e}", logging.WARNING)
                 raise
 
 
@@ -162,7 +184,7 @@ def route_decision(query: str, local_context: str) -> str:
             return "local"
         return "web"
     except Exception as e:
-        print(f"⚠️ Route 判断失败: {e}，默认走 local")
+        _safe_log(f"Route 判断失败: {e}，默认走 local", logging.WARNING)
         return "local"
 
 
@@ -177,7 +199,7 @@ def search_local(query: str, k: int = None) -> list[dict]:
     try:
         q_emb = get_embeddings([query])[0]
     except Exception as e:
-        print(f"⚠️ Embedding 失败: {e}")
+        _safe_log(f"Embedding 失败: {e}", logging.WARNING)
         q_emb = None
 
     # --- 2a. BM25 搜索 ---
@@ -242,6 +264,8 @@ def search_local(query: str, k: int = None) -> list[dict]:
             "filename": src.get("filename", ""),
             "score": item["score"],
             "source": "local",
+            "block_type": src.get("block_type"),
+            "section_path": src.get("section_path") or "",
         })
     return results
 
@@ -277,11 +301,11 @@ def hybrid_search(query: str, k: int = None) -> dict:
 
     # 3. Route 判断
     route = route_decision(query, local_context)
-    print(f"🔀 Route 决策: {route}")
+    _safe_log(f"Route 决策: {route}")
 
     # 4. 已禁用网络搜索：即便路由判定 web，也不调用 Tavily
     #    路由结果只作为标签展示（"本地足够" / "本地不足"）
-    print(f"ℹ️ 路由判定={route}，已禁用网络搜索，仅用本地结果")
+    _safe_log(f"路由判定={route}，已禁用网络搜索，仅用本地结果")
 
     return {
         "local": local_results,
@@ -291,9 +315,18 @@ def hybrid_search(query: str, k: int = None) -> dict:
     }
 
 
+def _is_table_hit(r: dict) -> bool:
+    """Return True if this result represents a table (by block_type or content)."""
+    if (r.get("block_type") or "").lower() == "table":
+        return True
+    content = r.get("content", "") or ""
+    return looks_like_html_table(content) or looks_like_markdown_table(content)
+
+
 def format_results_for_llm(search_result: dict, max_chars: int = 6000) -> str:
     """将搜索结果格式化为 LLM 能消费的上下文"""
     parts = []
+    has_table = False
 
     if search_result["local"]:
         parts.append("## 📄 本地文档检索结果\n")
@@ -301,9 +334,39 @@ def format_results_for_llm(search_result: dict, max_chars: int = 6000) -> str:
             parts.append(f"### [{i}] {r['title']}\n")
             if r.get("filename"):
                 parts.append(f"> 来源: {r['filename']}  (chunk {r['chunk_id']})\n")
+            if r.get("section_path"):
+                parts.append(f"> 章节: {r['section_path']}\n")
             content = r["content"]
-            if len(content) > 800:
-                content = content[:800] + "..."
+            if _is_table_hit(r):
+                has_table = True
+                limit = TABLE_CONTEXT_MAX_CHARS
+                # Try convert embedded HTML in content to markdown while keeping [文档]/[章节] headers if present
+                if looks_like_html_table(content):
+                    try:
+                        norm = normalize_table_fields(html=content)
+                        md = norm.get("markdown", "")
+                        if md:
+                            # Preserve any leading [文档]/[章节] header lines
+                            lines = content.splitlines()
+                            header_lines = []
+                            for ln in lines:
+                                stripped = ln.strip()
+                                if stripped.startswith("[文档]") or stripped.startswith("[章节]"):
+                                    header_lines.append(ln)
+                                else:
+                                    break
+                            prefix = "\n".join(header_lines).strip()
+                            if prefix:
+                                content = f"{prefix}\n\n{md}"
+                            else:
+                                content = md
+                    except Exception:
+                        pass
+                if len(content) > limit:
+                    content = content[:limit] + "..."
+            else:
+                if len(content) > 800:
+                    content = content[:800] + "..."
             parts.append(f"{content}\n")
 
     if search_result["web"]:
@@ -319,5 +382,10 @@ def format_results_for_llm(search_result: dict, max_chars: int = 6000) -> str:
     text = "\n".join(parts)
     if len(text) > max_chars:
         text = text[:max_chars] + "\n\n...(截断)"
+
+    if has_table:
+        # Instruction: system will attach original table; don't re-list every cell; don't invent rows
+        instr = "\n注意：系统将在答案后附加原文表格，请不要逐格复述表格内容，也不要编造表格行。"
+        text = text + instr
 
     return text

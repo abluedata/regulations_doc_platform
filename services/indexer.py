@@ -10,8 +10,7 @@ import time
 
 import requests
 
-from chunk_strategy import chunk_documents
-from config import (
+from core.config import (
     DOCS_DIR,
     EMBED_API_BASE,
     EMBED_API_KEY,
@@ -23,6 +22,7 @@ from config import (
     ES_USER,
     INDEX_NAME,
 )
+from services.chunk_strategy import chunk_documents
 from elasticsearch import Elasticsearch
 
 

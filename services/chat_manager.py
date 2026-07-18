@@ -12,8 +12,9 @@ import time
 from pathlib import Path
 from datetime import datetime
 
-# ─── 数据存储目录 ─────────────────────────────────────────
-DATA_DIR = Path(os.path.dirname(os.path.abspath(__file__))) / ".chat_data"
+# ─── 数据存储目录（项目根下 .chat_data）────────────────────
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = _PROJECT_ROOT / ".chat_data"
 HISTORY_FILE = DATA_DIR / "history.json"
 FAVORITES_FILE = DATA_DIR / "favorites.json"
 
@@ -144,6 +145,64 @@ def get_history(page: int = 1, page_size: int = 20) -> list:
     records.reverse()
     start = (page - 1) * page_size
     return records[start:start + page_size]
+
+
+def _flatten_text(v) -> str:
+    if isinstance(v, str):
+        return v
+    if isinstance(v, list):
+        return " ".join(
+            p.get("text", "") if isinstance(p, dict) else str(p) for p in v
+        )
+    if isinstance(v, dict):
+        return v.get("text", "")
+    return str(v or "")
+
+
+def list_history_filtered(
+    id_query: str | None = None,
+    q: str | None = None,
+    date_start: str | None = None,
+    date_end: str | None = None,
+    page: int = 1,
+    page_size: int = 100,
+) -> tuple[list, int]:
+    """筛选 + 分页历史记录，返回 (items, total)。最近的在前。"""
+    records = _load_json(HISTORY_FILE)
+    records.reverse()
+
+    if id_query:
+        needle = id_query.lower()
+        records = [r for r in records if needle in r.get("id", "").lower()]
+    if q:
+        needle = q.lower()
+        records = [
+            r for r in records
+            if needle in _flatten_text(r.get("question", "")).lower()
+        ]
+    if date_start:
+        records = [r for r in records if r.get("timestamp", "") >= date_start]
+    if date_end:
+        records = [
+            r for r in records
+            if r.get("timestamp", "")[:10] <= date_end
+        ]
+
+    total = len(records)
+    start = max(0, (page - 1) * page_size)
+    return records[start:start + page_size], total
+
+
+def list_favorites_filtered(
+    page: int = 1,
+    page_size: int = 100,
+) -> tuple[list, int]:
+    """分页收藏列表，返回 (items, total)。最近的在前。"""
+    favs = _load_json(FAVORITES_FILE)
+    favs.reverse()
+    total = len(favs)
+    start = max(0, (page - 1) * page_size)
+    return favs[start:start + page_size], total
 
 
 def get_session(session_id: str) -> dict | None:

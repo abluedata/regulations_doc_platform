@@ -5,7 +5,7 @@
 默认 chunk_size=512 字符, overlap=128 字符, 按段落→句子→标点递归分割。
 """
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from config import CHUNK_SIZE, CHUNK_OVERLAP
+from core.config import CHUNK_SIZE, CHUNK_OVERLAP
 
 
 def _get_splitter(chunk_size: int = None, chunk_overlap: int = None):

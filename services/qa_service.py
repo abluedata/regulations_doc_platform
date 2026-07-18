@@ -1,5 +1,5 @@
 """
-共享问答服务 — Gradio 与 FastAPI 共用。
+问答服务 — FastAPI /api/chat 流式回答。
 
 产出事件（dict）：
   {"type": "status", "status": "searching"|"parallel"}
@@ -16,15 +16,15 @@ from typing import Iterator
 
 import httpx
 
-from config import (
+from core.config import (
     LLM_API_BASE,
     LLM_API_KEY,
     LLM_MODEL,
     ANSWER_ATTACH_TABLES,
     ANSWER_MAX_TABLES,
 )
-from search import hybrid_search, format_results_for_llm
-from table_utils import extract_tables_from_hits
+from core.table_utils import extract_tables_from_hits
+from services.search import hybrid_search, format_results_for_llm
 
 COMPLEX_KEYWORDS = ("比较", "区别", "各", "分别", "所有", "总结", "汇总")
 
@@ -146,7 +146,7 @@ def stream_answer(
     try:
         if is_complex_question(text):
             yield {"type": "status", "status": "parallel"}
-            from parallel_qa import parallel_qa
+            from services.parallel_qa import parallel_qa
 
             result = parallel_qa(text)
             if _cancelled(cancel_event):
@@ -175,7 +175,7 @@ def stream_answer(
             # parallel branch: extract tables from parallel_search hits for complex Qs
             if ANSWER_ATTACH_TABLES:
                 try:
-                    from parallel_qa import parallel_search
+                    from services.parallel_qa import parallel_search
                     hits = parallel_search(text) or []
                     tables = extract_tables_from_hits(hits, max_tables=ANSWER_MAX_TABLES)
                 except Exception:

@@ -2,7 +2,7 @@
 
 import unittest
 
-from search import format_results_for_llm
+from services.search import format_results_for_llm
 
 
 SAMPLE_TABLE_MD = (

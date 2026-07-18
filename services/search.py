@@ -13,7 +13,7 @@ import logging
 import httpx
 import requests
 
-from config import (
+from core.config import (
     ES_HOST,
     ES_PASS,
     ES_USER,
@@ -34,13 +34,12 @@ from config import (
     ROUTE_SYSTEM_PROMPT,
     TABLE_CONTEXT_MAX_CHARS,
 )
-from elasticsearch import Elasticsearch
-
-from table_utils import (
+from core.table_utils import (
     looks_like_html_table,
     looks_like_markdown_table,
     normalize_table_fields,
 )
+from elasticsearch import Elasticsearch
 
 logger = logging.getLogger(__name__)
 

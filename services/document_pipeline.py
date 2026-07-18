@@ -24,7 +24,7 @@ from typing import Any
 
 import httpx
 
-from config import (
+from core.config import (
     CHUNK_OVERLAP,
     CHUNK_SIZE,
     EMBED_API_BASE,
@@ -37,20 +37,19 @@ from config import (
     ES_USER,
     INDEX_NAME,
 )
-from document_store import (
-    load_meta,
-    original_file,
-    save_ir,
-    save_preview_md,
-    update_status,
-)
-
-from table_utils import (
+from core.table_utils import (
     grid_to_html,
     grid_to_markdown,
     looks_like_html_table,
     normalize_table_fields,
     promote_raw_blocks,
+)
+from services.document_store import (
+    load_meta,
+    original_file,
+    save_ir,
+    save_preview_md,
+    update_status,
 )
 
 # MinerU 适配服务（默认 8003；见 mineru_service/）

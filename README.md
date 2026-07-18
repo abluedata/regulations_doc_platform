@@ -27,14 +27,14 @@
 └───────────┼─────────────────┘
             ▼
         LLM 流式回答
-        (Gradio Web UI)
+        (Vue3 + FastAPI)
 ```
 
 ## 技术栈
 
 | 层 | 技术 | 说明 |
 |---|---|---|
-| **UI** | Gradio 6.x | 响应式 Web UI，聊天 + 历史 + 收藏 Tab 布局 |
+| **UI** | Vue3 + Vite + Element Plus | 独立前端；经 FastAPI 对接（端口 5173 / 8000） |
 | **搜索引擎** | Elasticsearch 8.x | 混合索引：`text` (BM25) + `dense_vector` (cosine) |
 | **向量模型** | SiliconFlow Embeddings | `BAAI/bge-large-zh-v1.5`（1024 维，中文专项，OpenAI 兼容 `/v1/embeddings`；可改 Jina / OpenAI 等） |
 | **LLM 推理** | OpenAI 兼容 API | 可对接任意 `/v1/chat/completions` 接口（DeepSeek / OpenAI / vLLM 等） |
@@ -165,7 +165,7 @@ cp .env.example .env
 mkdir -p docs
 # 复制你的 .txt / .pdf 文件到 docs/ 目录下
 
-python3 indexer.py
+python -m services.indexer
 ```
 
 索引器执行流程：
@@ -176,32 +176,67 @@ python3 indexer.py
 
 > **文件名规范**：建议使用 `序号-标题` 格式（如 `01-雇主责任险条款.txt`），系统会自动提取标题。
 
-### 5. 启动 Web UI
+### 5. 启动界面（Vue3 + FastAPI）
+
+一键启动（推荐）：
 
 ```bash
-python3 app.py
+.\start.ps1
+# 或
+powershell -ExecutionPolicy Bypass -File scripts\start_all.ps1
 ```
 
-浏览器访问 **http://127.0.0.1:7860**
+或手动启动：
 
-首次启动时会自动检查 ES 索引是否存在，如果不存在会提示先运行 `indexer.py`。
+```bash
+# 在项目根目录 — FastAPI
+uvicorn api.main:app --reload --host 127.0.0.1 --port 8000
+
+# 另开终端 — Vue3
+cd frontend
+npm install
+npm run dev
+```
+
+浏览器访问 **http://127.0.0.1:5173**
+
+- 开发时 Vite 会把 `/api` 代理到后端 API
+- API 文档：http://127.0.0.1:8000/docs
+- 健康检查：http://127.0.0.1:8000/api/health
+
+首次启动时会自动检查 ES 索引是否存在，如果不存在会提示先运行 `python -m services.indexer`。
 
 ## 项目结构
 
 ```
-InsuraQuery/
-├── app.py                  # Gradio UI 主文件（聊天 / 历史 / 收藏 / 详情管理）
-├── chunk_strategy.py       # 文本分块策略（RecursiveCharacterTextSplitter）
-├── chat_manager.py         # 会话和收藏持久化（JSON 文件读写）
-├── config.py               # 配置模块（环境变量 + 参数常量）
-├── indexer.py              # 文档索引器（扫描 docs/ → 分块 → 向量化 → ES 入库）
-├── parallel_qa.py          # 并行问答模块（大上下文模式，一次 LLM 回答）
-├── search.py               # 混合搜索模块（BM25 + Vector + RRF + Route + Tavily）
-├── .env.example            # 环境变量模板（复制为 .env 后填入密钥）
-├── .gitignore              # Git 忽略规则
-├── requirements.txt        # Python 依赖项
-└── docs/                   # 文档目录（用户自行放入 .txt / .pdf）
+regulations_doc_platform/
+├── api/                    # HTTP 层（FastAPI，端口 8000）
+│   ├── main.py
+│   ├── schemas.py
+│   └── routes/             # chat / history / favorites / docs
+├── core/                   # 配置与纯工具
+│   ├── config.py           # 环境变量 + 参数常量
+│   └── table_utils.py      # 表格 HTML/Markdown 工具
+├── services/               # 业务服务
+│   ├── qa_service.py       # 流式问答
+│   ├── parallel_qa.py      # 大上下文并行问答
+│   ├── search.py           # 混合搜索（BM25 + Vector + RRF）
+│   ├── chat_manager.py     # 历史/收藏持久化
+│   ├── document_pipeline.py
+│   ├── document_store.py
+│   ├── chunk_strategy.py
+│   └── indexer.py          # 离线索引入口：python -m services.indexer
+├── mineru_service/         # MinerU 解析适配（独立进程）
+├── frontend/               # Vue3 + Vite + Element Plus（端口 5173）
+├── scripts/                # 启停与验证脚本
+├── tests/
+├── docs/                   # 示例/用户文档
+├── .env.example
+├── requirements.txt
+└── start.ps1
 ```
+
+依赖方向：`api` → `services` → `core`（单向）
 
 ## API 密钥获取
 

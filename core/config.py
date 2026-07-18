@@ -9,9 +9,12 @@ import os
 from pathlib import Path
 
 # ─── 加载 .env（如果安装了 python-dotenv）───────────────────
+# 项目根目录（core/ 的上一级）
+_ROOT = Path(__file__).resolve().parent.parent
+
 try:
     from dotenv import load_dotenv
-    load_dotenv(Path(__file__).parent / ".env")
+    load_dotenv(_ROOT / ".env")
 except ImportError:
     pass  # 没装 dotenv 时退化为纯依赖环境变量
 
@@ -51,7 +54,6 @@ CHUNK_SIZE = 512        # 单 chunk 字符数（中文保险条款按字符近�
 CHUNK_OVERLAP = 128     # chunk 间重叠字符数
 
 # ─── 文档目录 ────────────────────────────────────────────────
-_ROOT = Path(__file__).resolve().parent
 DOCS_DIR = os.path.join(str(_ROOT), "docs")
 # 上传/解析产物根目录（与 .chat_data 并列）
 DATA_ROOT = Path(_env("DATA_ROOT", str(_ROOT / ".data")))

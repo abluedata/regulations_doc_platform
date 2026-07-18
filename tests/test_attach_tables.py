@@ -2,7 +2,7 @@
 
 import unittest
 
-from qa_service import build_table_appendix
+from services.qa_service import build_table_appendix
 
 
 class TestBuildTableAppendix(unittest.TestCase):

@@ -1,139 +1,134 @@
-# regulations_doc_platform  — 合同法规审核agent平台
+# regulations_doc_platform — 合同法规审核 Agent 平台
 
-**合同法规审核agent平台** 是一个基于 **Elasticsearch** + **向量检索** + **大语言模型** 的合同条款智能问答系统。它能够：
+基于 **Elasticsearch** + **向量检索** + **大语言模型** 的合同/法规条款智能问答系统。
 
-- 📥 将合同文档（TXT/PDF）分块后使用 **SiliconFlow Embeddings**（`BAAI/bge-large-zh-v1.5`）向量化，存入 Elasticsearch
-- 🔍 混合检索（BM25 + 向量相似度 + RRF 融合）召回最相关的文档片段
-- 💬 支持流式对话、收藏历史记录、推荐问题快捷入口
-- ⚡ 检测到复杂（多文档对比/总结类）问题时自动切换为大上下文并行问答模式，一次返回完整结果
+- 将文档（TXT / PDF / DOCX 等）分块后使用 Embedding 向量化，写入 Elasticsearch
+- 混合检索（BM25 + 向量 + RRF）召回相关片段，流式生成回答
+- 复杂问题（对比 / 总结等）自动切换大上下文并行问答
+- 本地知识不足时可走 Tavily 网络补充（可选）
+- Vue3 前端 + FastAPI 后端；支持历史、收藏、知识库上传与 MinerU 版面解析
 
 ## 系统架构
 
 ```
-用户输入
-   │
-   ▼
-┌─────────────────────────────┐
-│  问题复杂度检测              │  ← 长度 > 20 或含"比较/区别/所有"等关键词
-│                             │
-│  简单:  普通搜索             │     复杂:  并行问答
-│   ┌───────────────┐         │     ┌────────────────┐
-│   │ BM25+Vec → RRF│         │     │ search_local(K) │
-│   │ route_decision│         │     │ 取 TOP-15 chunks │
-│   │ LLM 判断路由  │         │     │ 大 context 一次  │
-│   ├─ local: 仅本地│         │     │ LLM 回答         │
-│   ├─ web: +Tavily│         │     └────────────────┘
-│   └───────┬───────┘         │
-└───────────┼─────────────────┘
-            ▼
-        LLM 流式回答
-        (Vue3 + FastAPI)
+用户 (Vue3 :5173)
+        │  /api  proxy
+        ▼
+FastAPI (api/ :8002)
+        │
+        ├── services/qa_service      流式问答
+        ├── services/search          BM25 + Vector + RRF + Route
+        ├── services/parallel_qa     大上下文并行问答
+        ├── services/chat_manager    历史 / 收藏 (.chat_data/)
+        ├── services/document_*      上传、解析、分块、入库
+        └── core/                    配置 + 表格工具
+                │
+                ├── Elasticsearch
+                ├── Embedding API
+                └── LLM API
+                │
+MinerU (:8001) + adapter (:8003)  ← 文档解析（一键启动脚本拉起）
+```
+
+代码分层依赖方向（单向）：
+
+```
+api  →  services  →  core
 ```
 
 ## 技术栈
 
 | 层 | 技术 | 说明 |
 |---|---|---|
-| **UI** | Vue3 + Vite + Element Plus | 独立前端；经 FastAPI 对接（端口 5173 / 8000） |
-| **搜索引擎** | Elasticsearch 8.x | 混合索引：`text` (BM25) + `dense_vector` (cosine) |
-| **向量模型** | SiliconFlow Embeddings | `BAAI/bge-large-zh-v1.5`（1024 维，中文专项，OpenAI 兼容 `/v1/embeddings`；可改 Jina / OpenAI 等） |
-| **LLM 推理** | OpenAI 兼容 API | 可对接任意 `/v1/chat/completions` 接口（DeepSeek / OpenAI / vLLM 等） |
-| **网络搜索** | Tavily API | 仅当本地知识不足时自动触发，需在 `.env` 中配置 API Key |
-| **分块策略** | LangChain RecursiveCharacterTextSplitter | `chunk_size=512`, `overlap=128`, 按 `\n\n` → `\n` → 标点递归分割 |
-| **检索融合** | RRF (Reciprocal Rank Fusion) | BM25 + Vector 各自排名按 `1/(k+rank+1)` 融合, `k=60` |
-| **PDF 处理** | pdfplumber | 常规 PDF 文本提取 |
+| **前端** | Vue3 + Vite + Element Plus | 开发端口 5173；`/api` 代理到 8002 |
+| **API** | FastAPI + Uvicorn | 业务 API，默认端口 **8002** |
+| **解析** | MinerU pipeline + 本地 adapter | mineru-api :8001，adapter :8003 |
+| **搜索** | Elasticsearch 8.x | `text` (BM25) + `dense_vector` |
+| **向量** | OpenAI 兼容 Embeddings | 默认 SiliconFlow `BAAI/bge-large-zh-v1.5` (1024 维) |
+| **LLM** | OpenAI 兼容 Chat Completions | DeepSeek / OpenAI / vLLM 等 |
+| **网络搜索** | Tavily（可选） | 本地知识不足时触发 |
+| **分块** | LangChain RecursiveCharacterTextSplitter | `chunk_size=512`, `overlap=128` |
+| **融合** | RRF | `k=60` |
 
-## 功能详解
+## 功能概要
 
-### 1. 混合搜索（Hybrid Search）
-
-本地搜索同时使用两种检索方式，通过 RRF 融合排名：
+### 混合检索
 
 ```
 用户查询
-   ├── BM25 全文检索 → title^3 + content
-   ├── Vector 向量检索 → SiliconFlow Embedding (1024维)
-   └── RRF 融合 → 最终 TOP-K
+   ├── BM25 全文 → title^3 + content
+   ├── Vector 向量 → Embedding (1024 维)
+   └── RRF 融合 → TOP-K
 ```
 
-- 标题字段在 BM25 中加权 3 倍，提升文档标题命中权重
-- RRF 常数 `k=60` 平衡两种排序方法
-- 向量搜索使用 `num_candidates=100` 保证召回率
+### 智能路由
 
-### 2. 智能路由（Route）
-
-本地搜索完毕后，将检索结果摘要提交给 LLM，由 LLM 判断：
-
-| 路由结果 | 触发条件 | 行为 |
+| 结果 | 含义 | 行为 |
 |---|---|---|
-| **local** | 本地知识库明确包含答案 | 直接使用本地结果回答 |
-| **web** | 本地内容不相关或不完整 | 调用 Tavily API 搜索互联网补充 |
+| **local** | 本地库足够 | 仅用本地检索结果回答 |
+| **web** | 不足或不相关 | 调用 Tavily 补充后再答 |
 
-路由判断使用 `temperature=0` 确保决策的确定性。
+### 复杂问题
 
-### 3. 复杂问题检测
+| 模式 | 触发 | 策略 |
+|---|---|---|
+| 普通 | 简单事实问 | hybrid K=10，流式 LLM |
+| 并行 | 长度 > 20 或含「比较/区别/总结…」等 | TOP-15 chunks，大 context + 快速模型 |
 
-自动检测用户问题是否复杂，使用两种模式：
+### 会话与知识库
 
-| 模式 | 触发条件 | 检索策略 | LLM 调用 | 适用场景 |
-|---|---|---|---|---|
-| **普通搜索** | 简单问题 | BM25 + Vector + RRF (K=10) | 流式生成 | 单点事实查询 |
-| **并行问答** | 长度 > 20 或含比较/区别/总结等关键词 | 搜索 TOP-15 chunks | 大 context 一次非流式 (fast model) | 多文档对比/总结 |
-
-复杂问题检测关键词：`比较`、`区别`、`各`、`分别`、`所有`、`总结`、`汇总`
-
-### 4. 会话管理
-
-- 每次问答自动保存到 `.chat_data/history.json`
-- 多轮对话自动聚合为一个 session 保存
-- 支持收藏 / 取消收藏 / 删除 / 清空
-- 浏览器关闭/刷新时自动保存当前对话
-- 历史记录支持按 ID、问题内容、日期范围筛选
-
-## 演示截图
-
-### 主聊天界面
-![主聊天界面](screenshots/chat-main.png)
-
-### 问答详情
-![问答详情](screenshots/detail.png)
-
-### 历史记录
-![历史记录](screenshots/history.png)
-
-### 收藏夹
-![收藏夹](screenshots/favorites.png)
+- 历史 / 收藏：`.chat_data/history.json`、`.chat_data/favorites.json`
+- 上传产物：`.data/uploads/`、`.data/docs_index.json`
+- 前端支持文档列表、预览、重析、删除；解析链路可走 MinerU
 
 ## 快速开始
 
 ### 前置条件
 
-- Python 3.10+
-- Elasticsearch 8.x（推荐通过 Docker 启动，见下方）
-- 互联网连接（调用 SiliconFlow Embedding / LLM API / Tavily API 需要）
+- **Python 3.10–3.13**（推荐 **3.12**；勿用 3.14）
+- Node.js + npm（前端）
+- Elasticsearch 8.x
+- 可访问 Embedding / LLM API 的网络
 
-### 1. 克隆并安装依赖
+### 1. 安装依赖
 
 ```bash
 git clone <your-repo-url>
-cd InsuraQuery
+cd regulations_doc_platform
+
+# Windows
+python -m venv venv
+.\venv\Scripts\activate
+.\venv\Scripts\pip install -r requirements.txt -i https://pypi.org/simple
+
+# macOS / Linux
 python3 -m venv venv
-source venv/bin/activate        # macOS/Linux
-# venv\Scripts\activate         # Windows
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+前端：
+
+```bash
+cd frontend
+npm install
+cd ..
+```
+
+> `requirements.txt` 含 `mineru[pipeline]`，体积较大（含 torch 等）。仅验证 API 逻辑时可先装核心依赖，再按需安装 MinerU。
+
 ### 2. 启动 Elasticsearch
 
-请自行部署 Elasticsearch 8.x，确保服务可访问。推荐配置：
+自行部署 ES 8.x，示例（Docker）：
 
-- **地址**: `https://localhost:9200`
-- **用户**: `elastic`
-- **密码**: 在部署时设置的密码
+```bash
+docker run -p 9200:9200 -p 9300:9300 \
+  -e "discovery.type=single-node" \
+  -e "ELASTIC_PASSWORD=your_password" \
+  docker.elastic.co/elasticsearch/elasticsearch:8.19.0
+```
 
-部署方式（任选其一）：
-- **Docker**: `docker run -p 9200:9200 -p 9300:9300 -e "discovery.type=single-node" -e "ELASTIC_PASSWORD=your_password" docker.elastic.co/elasticsearch/elasticsearch:8.19.0`
-- **官方安装**: 参考 [Elasticsearch 官方文档](https://www.elastic.co/guide/en/elasticsearch/reference/current/install-elasticsearch.html)
+默认连接：`http://localhost:9200`，用户 `elastic`（以你的部署为准）。
 
 ### 3. 配置环境变量
 
@@ -141,116 +136,142 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-编辑 `.env` 文件，填入你的密钥（详见 [API 密钥获取](#api-密钥获取)）：
+编辑 `.env`：
 
 | 变量 | 必填 | 默认值 | 说明 |
 |---|---|---|---|
-| `ES_HOST` | ✅ | `https://localhost:9200` | ES 地址 |
+| `ES_HOST` | ✅ | `http://localhost:9200` | ES 地址 |
 | `ES_USER` | ✅ | `elastic` | ES 用户名 |
 | `ES_PASS` | ✅ | — | ES 密码 |
-| `ES_INDEX` | 可选 | `knowledge_base` | ES 索引名 |
-| `EMBED_API_BASE` | 可选 | `https://api.siliconflow.cn/v1` | Embedding API 地址（OpenAI 兼容） |
-| `EMBED_API_KEY` | ✅ | — | Embedding API Key（如 SiliconFlow） |
-| `EMBED_MODEL` | 可选 | `BAAI/bge-large-zh-v1.5` | 向量模型名 |
-| `EMBED_DIMS` | 可选 | `1024` | 向量维度 |
-| `TAVILY_API_KEY` | 可选 | — | Tavily 网络搜索 API Key |
-| `LLM_API_BASE` | ✅ | `https://api.openai.com/v1` | LLM API 地址 |
-| `LLM_API_KEY` | ✅ | — | LLM API 密钥 |
-| `LLM_MODEL` | ✅ | `deepseek-v4-pro` | 问答主模型 |
-| `LLM_MODEL_FAST` | 可选 | `deepseek-v4-flash` | 大上下文场景的快速模型 |
+| `ES_INDEX` | 可选 | `knowledge_base` | 索引名 |
+| `EMBED_API_BASE` | 可选 | `https://api.siliconflow.cn/v1` | Embedding API |
+| `EMBED_API_KEY` | ✅ | — | Embedding Key |
+| `EMBED_MODEL` | 可选 | `BAAI/bge-large-zh-v1.5` | 模型名 |
+| `EMBED_DIMS` | 可选 | `1024` | 维度 |
+| `TAVILY_API_KEY` | 可选 | — | 网络搜索 |
+| `LLM_API_BASE` | ✅ | `https://api.openai.com/v1` | LLM API |
+| `LLM_API_KEY` | ✅ | — | LLM Key |
+| `LLM_MODEL` | ✅ | `deepseek-v4-pro` | 主模型 |
+| `LLM_MODEL_FAST` | 可选 | `deepseek-v4-flash` | 大上下文快速模型 |
 
-### 4. 放入文档并建立索引
+### 4. 放入文档并建立索引（离线批量）
 
 ```bash
-mkdir -p docs
-# 复制你的 .txt / .pdf 文件到 docs/ 目录下
-
+# 将 .txt / .pdf 放入 docs/
 python -m services.indexer
 ```
 
-索引器执行流程：
-1. 扫描 `docs/` 下所有 `.txt` 和 `.pdf` 文件
-2. 按 `\n\n` → `\n` → 标点递归分割为 chunk（`chunk_size=512`, `overlap=128`）
-3. 调用 SiliconFlow Embeddings API 批量向量化（每批 100 条）
-4. 创建 ES 索引 `knowledge_base`（如果不存在）并批量写入 chunks + 向量（每批 50 条）
+流程：扫描 `docs/` → 分块 → Embedding → 写入 ES 索引。
 
-> **文件名规范**：建议使用 `序号-标题` 格式（如 `01-雇主责任险条款.txt`），系统会自动提取标题。
+> 文件名建议 `序号-标题`（如 `01-雇主责任险条款.txt`），便于提取标题。  
+> 也可在前端知识库页上传文档，走 MinerU 解析流水线入库。
 
-### 5. 启动界面（Vue3 + FastAPI）
+### 5. 启动服务
 
-一键启动（推荐）：
+**Windows 一键启动（推荐）：**
 
-```bash
+```powershell
 .\start.ps1
-# 或
+# 等价
 powershell -ExecutionPolicy Bypass -File scripts\start_all.ps1
+
+# 常用参数
+.\start.ps1 -Restart          # 释放端口后重启
+.\start.ps1 -SkipFrontend     # 只起后端
+.\start.ps1 -OpenBrowser      # 启动后打开浏览器
 ```
 
-或手动启动：
+一键脚本会拉起：
+
+| 服务 | 默认端口 |
+|---|---|
+| mineru-api | 8001 |
+| MinerU adapter | 8003 |
+| 业务 API (`api.main`) | **8002** |
+| 前端 Vite | 5173 |
+
+停止：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\stop_all.ps1
+```
+
+**手动启动（需与前端代理一致）：**
 
 ```bash
-# 在项目根目录 — FastAPI
-uvicorn api.main:app --reload --host 127.0.0.1 --port 8000
+# 业务 API（默认与 vite proxy 对齐 8002）
+uvicorn api.main:app --reload --host 127.0.0.1 --port 8002
 
-# 另开终端 — Vue3
+# 前端
 cd frontend
-npm install
 npm run dev
 ```
 
-浏览器访问 **http://127.0.0.1:5173**
+访问：
 
-- 开发时 Vite 会把 `/api` 代理到后端 API
-- API 文档：http://127.0.0.1:8000/docs
-- 健康检查：http://127.0.0.1:8000/api/health
+| 入口 | URL |
+|---|---|
+| 前端 | http://127.0.0.1:5173 |
+| API 文档 | http://127.0.0.1:8002/docs |
+| 健康检查 | http://127.0.0.1:8002/api/health |
 
-首次启动时会自动检查 ES 索引是否存在，如果不存在会提示先运行 `python -m services.indexer`。
+开发时 Vite 将 `/api` 代理到 `http://127.0.0.1:8002`。
+
+若索引不存在，先执行 `python -m services.indexer` 或通过前端上传入库。
+
+### 6. 运行测试
+
+```bash
+# 在项目根目录
+.\venv\Scripts\python.exe -m unittest discover -s tests -v
+```
 
 ## 项目结构
 
 ```
 regulations_doc_platform/
-├── api/                    # HTTP 层（FastAPI，端口 8000）
-│   ├── main.py
+├── api/                      # HTTP 层（FastAPI）
+│   ├── main.py               # 应用入口：uvicorn api.main:app
 │   ├── schemas.py
-│   └── routes/             # chat / history / favorites / docs
-├── core/                   # 配置与纯工具
-│   ├── config.py           # 环境变量 + 参数常量
-│   └── table_utils.py      # 表格 HTML/Markdown 工具
-├── services/               # 业务服务
-│   ├── qa_service.py       # 流式问答
-│   ├── parallel_qa.py      # 大上下文并行问答
-│   ├── search.py           # 混合搜索（BM25 + Vector + RRF）
-│   ├── chat_manager.py     # 历史/收藏持久化
-│   ├── document_pipeline.py
-│   ├── document_store.py
-│   ├── chunk_strategy.py
-│   └── indexer.py          # 离线索引入口：python -m services.indexer
-├── mineru_service/         # MinerU 解析适配（独立进程）
-├── frontend/               # Vue3 + Vite + Element Plus（端口 5173）
-├── scripts/                # 启停与验证脚本
-├── tests/
-├── docs/                   # 示例/用户文档
+│   └── routes/               # chat / history / favorites / docs
+├── core/                     # 配置与纯工具
+│   ├── config.py             # .env + 常量（_ROOT = 项目根）
+│   └── table_utils.py        # 表格 HTML/Markdown 规范化
+├── services/                 # 业务服务
+│   ├── qa_service.py         # 流式问答
+│   ├── parallel_qa.py        # 大上下文并行问答
+│   ├── search.py             # 混合检索 + 路由
+│   ├── chat_manager.py       # 历史 / 收藏
+│   ├── document_pipeline.py  # 解析 → 分块 → 入库
+│   ├── document_store.py     # 上传元数据与 IR 本地存储
+│   ├── chunk_strategy.py     # 文本分块
+│   └── indexer.py            # 离线索引：python -m services.indexer
+├── mineru_service/           # MinerU 适配服务（独立进程）
+├── frontend/                 # Vue3 + Vite + Element Plus
+├── scripts/                  # start_all / stop_all / 验证脚本
+├── tests/                    # unittest
+├── docs/                     # 示例文档 / 规格与计划
+├── .data/                    # 运行时数据（上传、日志；gitignore）
+├── .chat_data/               # 历史与收藏（gitignore）
 ├── .env.example
 ├── requirements.txt
-└── start.ps1
+├── start.ps1                 # 根目录一键启动入口
+└── start.bat
 ```
 
-依赖方向：`api` → `services` → `core`（单向）
+## API 密钥
 
-## API 密钥获取
-
-| 服务 | 注册地址 | 用途 |
+| 服务 | 地址 | 用途 |
 |---|---|---|
-| SiliconFlow Embeddings | https://cloud.siliconflow.com | 文本向量化（BAAI/bge-large-zh-v1.5，新用户有免费额度） |
-| Tavily Search | https://tavily.com/ | 网络搜索补充（免费每月 1000 次） |
-| Elasticsearch | — | 本地 Docker 部署（免费开源） |
-| LLM (DeepSeek) | https://platform.deepseek.com/ | 问答推理（按量计费） |
+| SiliconFlow | https://cloud.siliconflow.com | 默认 Embedding |
+| Tavily | https://tavily.com/ | 可选网络搜索 |
+| DeepSeek 等 | 对应平台 | LLM 推理 |
+| Elasticsearch | 本地 / 自建 | 混合检索索引 |
 
 ## 许可
 
-MIT License — 详见 [LICENSE](LICENSE) 文件。
+MIT License — 见 [LICENSE](LICENSE)。
 
 ## 贡献
 
-欢迎提交 Issue 或 Pull Request！
+欢迎提交 Issue 或 Pull Request。

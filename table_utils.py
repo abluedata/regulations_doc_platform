@@ -257,9 +257,16 @@ def normalize_table_fields(*, html: str | None = None, markdown: str | None = No
     if html:
         grid = html_to_grid(html)
     if not grid and markdown:
-        grid = markdown_to_grid(markdown)
+        if looks_like_html_table(markdown):
+            grid = html_to_grid(markdown)
+        else:
+            grid = markdown_to_grid(markdown)
     if not grid and text:
-        grid = markdown_to_grid(text)
+        # MinerU 常把整段 <table>… 放在 text 字段而非 html 字段
+        if looks_like_html_table(text):
+            grid = html_to_grid(text)
+        else:
+            grid = markdown_to_grid(text)
 
     if not grid:
         return {"html": "", "markdown": "", "text": ""}

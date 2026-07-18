@@ -176,6 +176,13 @@ class TestNormalizeTableFields(unittest.TestCase):
         result = normalize_table_fields(text="| x | y |\n| --- |\n| 1 | 2 |")
         self.assertIn("|", result.get("markdown", ""))
 
+    def test_normalize_from_text_html_table(self):
+        """MinerU 常把 <table> 放在 text 字段，而非 html 字段。"""
+        result = normalize_table_fields(text=SAMPLE_HTML)
+        self.assertIn("27个月本人工资", result["markdown"])
+        self.assertNotIn("<p>", result["html"])
+        self.assertEqual(result["text"], result["markdown"])
+
     def test_normalize_empty_on_failure(self):
         result = normalize_table_fields(html="garbage")
         self.assertEqual(result["html"], "")

@@ -1,0 +1,255 @@
+:root {
+  --bg: #f5f7fb;
+  --card: #ffffff;
+  --text: #1e293b;
+  --muted: #94a3b8;
+  --primary: #3b82f6;
+  --border: #e2e8f0;
+  --user-bg: #eff6ff;
+  --assistant-bg: #f8fafc;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  min-height: 100%;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 60px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.brand {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.brand span {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+  letter-spacing: 1.5px;
+}
+
+.app-main {
+  flex: 1;
+  width: min(1200px, 100%);
+  margin: 0 auto;
+  padding: 20px 16px 40px;
+}
+
+.toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.status-text {
+  font-size: 13px;
+  color: var(--muted);
+  margin-left: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.page-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 140px);
+}
+
+.chat-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 4px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 420px;
+  max-height: calc(100vh - 320px);
+}
+
+.msg {
+  max-width: 92%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  line-height: 1.65;
+  word-break: break-word;
+}
+
+.msg.user {
+  align-self: flex-end;
+  background: var(--user-bg);
+  border: 1px solid #dbeafe;
+}
+
+.msg.assistant {
+  align-self: flex-start;
+  background: var(--assistant-bg);
+  border: 1px solid var(--border);
+}
+
+.msg-empty {
+  margin: auto;
+  color: var(--muted);
+  text-align: center;
+  padding: 48px 12px;
+}
+
+.msg :deep(p) {
+  margin: 0 0 0.6em;
+}
+
+.msg :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.msg :deep(pre) {
+  overflow-x: auto;
+  background: #0f172a0d;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.msg :deep(blockquote) {
+  margin: 0 0 0.6em;
+  padding-left: 10px;
+  border-left: 3px solid #93c5fd;
+  color: #64748b;
+}
+
+.chat-input-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.examples {
+  margin-top: 16px;
+}
+
+.examples h4 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: #64748b;
+}
+
+.example-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  align-items: center;
+}
+
+.status-text {
+  color: var(--muted);
+  font-size: 13px;
+  margin-left: auto;
+}
+
+.detail-block {
+  margin-top: 16px;
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
+
+.detail-msg {
+  margin-bottom: 14px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+}
+
+.detail-msg.user {
+  background: #eff6ff;
+}
+
+/* 助手消息中的 GFM 表格 */
+.msg.assistant table {
+  border-collapse: collapse;
+  width: 100%;
+  max-width: 100%;
+  display: block;
+  overflow-x: auto;
+  margin: 0.75rem 0;
+  font-size: 14px;
+}
+.msg.assistant th,
+.msg.assistant td {
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+.msg.assistant th {
+  background: #f1f5f9;
+  font-weight: 600;
+}
+.msg.assistant tr:nth-child(even) td {
+  background: #fafbfc;
+}

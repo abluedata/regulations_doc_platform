@@ -19,6 +19,9 @@ __all__ = [
     "grid_to_html",
     "grid_to_markdown",
     "normalize_table_fields",
+    "is_valid_table_grid",
+    "promote_raw_blocks",
+    "extract_tables_from_hits",
 ]
 
 
@@ -264,3 +267,144 @@ def normalize_table_fields(*, html: str | None = None, markdown: str | None = No
     out_html = grid_to_html(grid)
     out_md = grid_to_markdown(grid)
     return {"html": out_html, "markdown": out_md, "text": out_md}
+
+
+def is_valid_table_grid(grid: list[list[str]], min_rows: int = 2, min_cols: int = 2) -> bool:
+    """True if grid has >= min_rows and min row length >= min_cols.
+
+    Uses: len(grid)>=min_rows and min(len(r) for r in grid) >= min_cols
+    """
+    if not grid or not isinstance(grid, list):
+        return False
+    if len(grid) < min_rows:
+        return False
+    try:
+        return min(len(r) for r in grid if isinstance(r, (list, tuple))) >= min_cols
+    except Exception:
+        return False
+
+
+def promote_raw_blocks(raw_blocks: list[dict]) -> list[dict]:
+    """Copy each block.
+
+    If type already table OR text/html looks like html table OR text/markdown looks like md table:
+      - normalize_table_fields
+      - if resulting markdown non-empty AND is_valid_table_grid(markdown_to_grid(markdown)):
+        set type=table, html, markdown, text from normalized fields
+    Do not throw on bad tables.
+    """
+    if not raw_blocks:
+        return []
+    promoted: list[dict] = []
+    for b in raw_blocks:
+        if not isinstance(b, dict):
+            promoted.append(b)
+            continue
+        cp = dict(b)  # shallow copy
+        btype = (cp.get("type") or "").lower()
+        text = cp.get("text") or ""
+        h = cp.get("html") or ""
+        m = cp.get("markdown") or ""
+        looks_table = (
+            btype == "table"
+            or looks_like_html_table(text)
+            or looks_like_html_table(h)
+            or looks_like_markdown_table(text)
+            or looks_like_markdown_table(m)
+        )
+        if looks_table:
+            try:
+                norm = normalize_table_fields(
+                    html=h or None,
+                    markdown=m or None,
+                    text=text or None,
+                )
+                md = norm.get("markdown", "")
+                if md:
+                    g = markdown_to_grid(md)
+                    if is_valid_table_grid(g):
+                        cp["type"] = "table"
+                        cp["html"] = norm.get("html", "")
+                        cp["markdown"] = md
+                        cp["text"] = norm.get("text", "")
+            except Exception:
+                # never throw; leave copy as-is
+                pass
+        promoted.append(cp)
+    return promoted
+
+
+def extract_tables_from_hits(hits: list[dict], max_tables: int = 2) -> list[dict]:
+    """Extract up to max_tables valid tables from search hits.
+
+    Each returned item: {"markdown","filename","section_path","doc_id","chunk_id"}
+
+    Rules:
+    - Prefer hits where block_type == "table"
+    - Also accept content that contains html/md tables
+    - Strip [文档] / [章节] headers when scanning content for tables
+    - Deduplicate by markdown string (stripped)
+    - Stop at max_tables
+    - Only include if valid grid >= 2x2
+    """
+    if not hits:
+        return []
+    out: list[dict] = []
+    seen: set[str] = set()
+    header_re = re.compile(r"^\s*\[(文档|章节)\][^\n]*\n?", flags=re.MULTILINE)
+
+    for h in hits:
+        if not isinstance(h, dict):
+            continue
+        bt = (h.get("block_type") or "").lower()
+        content = h.get("content") or ""
+        # clean headers for detection / extraction
+        clean = header_re.sub("", content).strip()
+
+        md = ""
+        if bt == "table":
+            # prefer explicit markdown if present, else content (after header strip)
+            md = h.get("markdown") or h.get("content") or ""
+            # also try clean if original had headers
+            if not looks_like_markdown_table(md):
+                if looks_like_markdown_table(clean):
+                    md = clean
+        else:
+            # try markdown table in content first
+            if looks_like_markdown_table(content):
+                md = content
+            elif looks_like_markdown_table(clean):
+                md = clean
+            elif looks_like_html_table(content):
+                norm = normalize_table_fields(html=content)
+                md = norm.get("markdown", "")
+            elif looks_like_html_table(clean):
+                norm = normalize_table_fields(html=clean)
+                md = norm.get("markdown", "")
+
+        if not md:
+            continue
+
+        # final strip and validate
+        md = md.strip()
+        g = markdown_to_grid(md)
+        if not is_valid_table_grid(g):
+            continue
+
+        key = md
+        if key in seen:
+            continue
+        seen.add(key)
+
+        out.append(
+            {
+                "markdown": md,
+                "filename": h.get("filename", ""),
+                "section_path": h.get("section_path", ""),
+                "doc_id": h.get("doc_id", ""),
+                "chunk_id": h.get("chunk_id", -1),
+            }
+        )
+        if len(out) >= max_tables:
+            break
+    return out

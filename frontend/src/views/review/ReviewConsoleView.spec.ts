@@ -62,4 +62,19 @@ describe('ReviewConsoleView', () => {
     wrapper.unmount()
     vi.useRealTimers()
   })
+
+  it('renders the console without an internal left navigation panel', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/review/console', name: 'review-console', component: ReviewConsoleView }],
+    })
+    await router.push('/review/console')
+    await router.isReady()
+
+    const wrapper = mount(ReviewConsoleView, { global: { plugins: [router, ElementPlus] } })
+
+    expect(wrapper.find('.document-outline').exists()).toBe(false)
+    expect(wrapper.find('.reader-panel').exists()).toBe(true)
+    expect(wrapper.find('.findings-panel').exists()).toBe(true)
+  })
 })

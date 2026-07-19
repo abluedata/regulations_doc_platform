@@ -2,15 +2,9 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  ArrowLeft,
-  Briefcase,
-  Clock,
-  Collection,
   Download,
   MoreFilled,
   Printer,
-  Search,
-  Star,
   ZoomIn,
   ZoomOut,
 } from '@element-plus/icons-vue'
@@ -87,23 +81,6 @@ async function goPrevious() {
     </div>
 
     <div class="console-layout">
-      <aside class="document-outline" aria-label="文档导航">
-        <div class="outline-brand">
-          <span class="outline-brand__icon"><el-icon><Search /></el-icon></span>
-          <div><strong>法务运营</strong><small>企业版</small></div>
-        </div>
-        <nav>
-          <button class="outline-item outline-item--active" type="button"><el-icon><Collection /></el-icon>当前批次</button>
-          <button class="outline-item" type="button"><el-icon><Clock /></el-icon>最近文档</button>
-          <button class="outline-item" type="button"><el-icon><Star /></el-icon>收藏条款</button>
-          <button class="outline-item" type="button"><el-icon><Briefcase /></el-icon>审计日志</button>
-        </nav>
-        <div class="outline-footer">
-          <button type="button"><el-icon><Search /></el-icon>账户</button>
-          <button type="button"><el-icon><ArrowLeft /></el-icon>退出登录</button>
-        </div>
-      </aside>
-
       <main class="reader-panel">
         <div class="reader-toolbar">
           <div class="reader-toolbar__title"><strong>文档正文</strong><span>第 3 节 / 14</span></div>
@@ -254,95 +231,10 @@ async function goPrevious() {
 
 .console-layout {
   display: grid;
-  grid-template-columns: 210px minmax(0, 1fr) 360px;
+  grid-template-columns: minmax(0, 1fr) 360px;
   min-height: 680px;
   border: 1px solid var(--outline-soft);
   background: var(--surface);
-}
-
-.document-outline {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  border-right: 1px solid var(--outline-soft);
-  background: var(--surface-low);
-}
-
-.outline-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 20px 16px;
-  border-bottom: 1px solid var(--outline-soft);
-}
-
-.outline-brand__icon {
-  display: grid;
-  width: 38px;
-  height: 38px;
-  place-items: center;
-  color: #ffffff;
-  background: var(--ink);
-}
-
-.outline-brand strong,
-.outline-brand small {
-  display: block;
-}
-
-.outline-brand strong {
-  font-size: 14px;
-}
-
-.outline-brand small {
-  margin-top: 3px;
-  color: var(--ink-muted);
-  font-size: 10px;
-}
-
-.document-outline nav {
-  display: grid;
-  padding: 12px 0;
-}
-
-.outline-item,
-.outline-footer button {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 42px;
-  padding: 0 16px;
-  border: 0;
-  color: var(--ink-muted);
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-}
-
-.outline-item span,
-.outline-footer span {
-  width: 18px;
-  color: currentColor;
-  font-size: 18px;
-  text-align: center;
-}
-
-.outline-item:hover,
-.outline-item--active {
-  color: var(--action);
-  background: var(--action-soft);
-}
-
-.outline-item--active {
-  border-left: 3px solid var(--action);
-  padding-left: 13px;
-}
-
-.outline-footer {
-  display: grid;
-  margin-top: auto;
-  padding: 12px 0;
-  border-top: 1px solid var(--outline-soft);
 }
 
 .reader-panel {
@@ -573,21 +465,11 @@ async function goPrevious() {
 
 @media (max-width: 1200px) {
   .console-layout {
-    grid-template-columns: 180px minmax(0, 1fr) 320px;
+    grid-template-columns: minmax(0, 1fr) 320px;
   }
 
   .document-paper {
     padding: 38px 40px;
-  }
-}
-
-@media (max-width: 900px) {
-  .console-layout {
-    grid-template-columns: minmax(0, 1fr) 320px;
-  }
-
-  .document-outline {
-    display: none;
   }
 }
 

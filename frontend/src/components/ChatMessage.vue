@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { marked } from 'marked'
+import { Cpu, UserFilled } from '@element-plus/icons-vue'
 
 const props = defineProps<{
   role: 'user' | 'assistant'
@@ -26,5 +27,10 @@ function escapeHtml(s: string) {
 </script>
 
 <template>
-  <div class="msg" :class="role" v-html="html" />
+  <article class="msg" :class="role" :aria-label="role === 'user' ? '用户消息' : '智能助手消息'">
+    <div class="msg-avatar" aria-hidden="true">
+      <el-icon><UserFilled v-if="role === 'user'" /><Cpu v-else /></el-icon>
+    </div>
+    <div class="msg-content" v-html="html" />
+  </article>
 </template>

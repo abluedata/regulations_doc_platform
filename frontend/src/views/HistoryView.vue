@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Close, Delete, RefreshRight, Search, Star } from '@element-plus/icons-vue'
 import SessionTable from '@/components/SessionTable.vue'
 import type { SessionRecord } from '@/types'
 import {
@@ -99,36 +100,88 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="page-card">
-    <div class="toolbar-row">
-      <el-input v-model="searchId" placeholder="ID 搜索（模糊）" clearable style="width: 160px" />
-      <el-input v-model="searchQ" placeholder="问题搜索（模糊）" clearable style="width: 220px" />
-      <el-date-picker
-        v-model="dateStart"
-        type="date"
-        placeholder="开始日期"
-        value-format="YYYY-MM-DD"
-        style="width: 150px"
-      />
-      <el-date-picker
-        v-model="dateEnd"
-        type="date"
-        placeholder="结束日期"
-        value-format="YYYY-MM-DD"
-        style="width: 150px"
-      />
-      <el-button type="primary" @click="load">🔍 搜索</el-button>
-      <el-button @click="onClearSearch">✕ 清除</el-button>
-    </div>
+  <main class="enterprise-page history-page">
+    <header class="page-header" data-test="page-header">
+      <div class="page-header__copy">
+        <h1>历史记录</h1>
+        <p>检索、收藏并维护智能问答会话</p>
+      </div>
+      <div class="page-header__actions">
+        <el-tag type="info" effect="plain">{{ status || '正在读取记录' }}</el-tag>
+      </div>
+    </header>
 
-    <div class="toolbar-row">
-      <el-button @click="load">↺ 刷新</el-button>
-      <el-button @click="onFavorite">☆ 收藏选中</el-button>
-      <el-button type="danger" plain @click="onClearAll">✕ 清空所有</el-button>
-      <el-button type="danger" @click="onDelete">✕ 删除选中</el-button>
-      <span class="status-text">{{ status }}</span>
-    </div>
+    <section class="surface-panel filter-panel" aria-labelledby="history-filter-heading">
+      <div class="surface-panel__header compact-header">
+        <div>
+          <h2 id="history-filter-heading">筛选记录</h2>
+          <p>可按会话 ID、问题内容和日期范围组合查询</p>
+        </div>
+      </div>
+      <div class="task-toolbar history-search" data-test="history-search">
+        <div class="task-toolbar__group task-toolbar__filters">
+          <el-input
+            v-model="searchId"
+            aria-label="按会话 ID 搜索"
+            placeholder="ID 搜索（模糊）"
+            clearable
+            style="width: 160px"
+          />
+          <el-input
+            v-model="searchQ"
+            aria-label="按问题搜索"
+            placeholder="问题搜索（模糊）"
+            clearable
+            style="width: 220px"
+          />
+          <el-date-picker
+            v-model="dateStart"
+            type="date"
+            aria-label="开始日期"
+            placeholder="开始日期"
+            value-format="YYYY-MM-DD"
+            style="width: 150px"
+          />
+          <el-date-picker
+            v-model="dateEnd"
+            type="date"
+            aria-label="结束日期"
+            placeholder="结束日期"
+            value-format="YYYY-MM-DD"
+            style="width: 150px"
+          />
+        </div>
+        <div class="task-toolbar__group">
+          <el-button type="primary" :icon="Search" @click="load">搜索</el-button>
+          <el-button :icon="Close" @click="onClearSearch">清除</el-button>
+        </div>
+      </div>
+    </section>
 
-    <SessionTable :rows="rows" :loading="loading" @selection-change="(s) => (selected = s)" />
-  </div>
+    <section class="surface-panel records-panel" aria-labelledby="history-results-heading">
+      <div class="surface-panel__header compact-header">
+        <div>
+          <h2 id="history-results-heading">会话记录</h2>
+          <p>已选择 {{ selected.length }} 条</p>
+        </div>
+      </div>
+      <div class="task-toolbar bulk-toolbar">
+        <div class="task-toolbar__group">
+          <el-button :icon="RefreshRight" @click="load">刷新</el-button>
+          <el-button data-test="favorite-selected" :icon="Star" @click="onFavorite">
+            收藏选中
+          </el-button>
+        </div>
+        <div class="task-toolbar__group task-toolbar__danger">
+          <el-button type="danger" plain :icon="Delete" @click="onClearAll">清空所有</el-button>
+          <el-button data-test="delete-selected" type="danger" :icon="Delete" @click="onDelete">
+            删除选中
+          </el-button>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <SessionTable :rows="rows" :loading="loading" @selection-change="(s) => (selected = s)" />
+      </div>
+    </section>
+  </main>
 </template>

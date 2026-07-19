@@ -3,6 +3,14 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadRequestOptions } from 'element-plus'
+import {
+  Close,
+  Delete,
+  DocumentAdd,
+  RefreshRight,
+  Search,
+  View,
+} from '@element-plus/icons-vue'
 import type { DocRecord } from '@/types'
 import { deleteDoc, listDocs, reparseDoc, uploadDoc } from '@/api/docs'
 
@@ -169,133 +177,153 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="page-card docs-page">
-    <div class="docs-header">
-      <div>
-        <h2 class="docs-title">知识库</h2>
-        <p class="docs-sub">上传合同与条款文档，自动解析并写入检索库</p>
+  <main class="enterprise-page docs-page">
+    <header class="page-header" data-test="page-header">
+      <div class="page-header__copy">
+        <h1>知识库</h1>
+        <p>上传合同与条款文档，跟踪解析状态并维护企业检索库</p>
       </div>
-    </div>
-
-    <el-upload
-      class="docs-uploader"
-      drag
-      :show-file-list="false"
-      :http-request="customUpload"
-      accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-      multiple
-      :disabled="uploading"
-    >
-      <div class="upload-inner">
-        <div class="upload-icon">📄</div>
-        <div class="upload-main">
-          {{ uploading ? `上传中 ${uploadPct}%…` : '将 PDF 或 DOCX 拖拽到此处，或点击选择' }}
-        </div>
-        <div class="upload-hint">
-          支持数字版 PDF、DOCX；解析在 CPU 上可能需要数分钟，可稍后回来查看
-        </div>
+      <div class="page-header__actions">
+        <el-tag v-if="hasProcessing" type="warning" effect="plain">解析任务进行中</el-tag>
+        <el-tag v-else type="success" effect="plain">知识库可用</el-tag>
       </div>
-    </el-upload>
+    </header>
 
-    <div class="toolbar-row docs-toolbar">
-      <el-select v-model="statusFilter" style="width: 140px" @change="onFilter">
-        <el-option label="全部状态" value="all" />
-        <el-option label="处理中" value="processing" />
-        <el-option label="已入库" value="ready" />
-        <el-option label="失败" value="failed" />
-        <el-option label="排队中" value="queued" />
-      </el-select>
-      <el-input
-        v-model="searchQ"
-        placeholder="搜索文件名"
-        clearable
-        style="width: 220px"
-        @keyup.enter="onFilter"
-      />
-      <el-button type="primary" @click="onFilter">搜索</el-button>
-      <el-button @click="onClearFilter">清除</el-button>
-      <el-button @click="loadAndPoll">刷新</el-button>
-      <span class="status-text">
-        {{ statusText }}
-        <template v-if="hasProcessing"> · 正在处理，列表会自动更新</template>
-      </span>
-    </div>
-
-    <el-table
-      :data="rows"
-      v-loading="loading"
-      border
-      stripe
-      height="480"
-      empty-text="还没有文档。上传后可在此跟踪解析进度"
-      @row-click="goPreview"
-      class="docs-table"
-    >
-      <el-table-column prop="filename" label="文件名" min-width="200" show-overflow-tooltip>
-        <template #default="{ row }">
-          <span class="linkish">{{ row.filename }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="类型" width="80" align="center">
-        <template #default="{ row }">
-          <el-tag size="small" type="info">{{ (row.ext || '').toUpperCase() || '—' }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="状态" width="110" align="center">
-        <template #default="{ row }">
-          <el-tag size="small" :type="statusTagType(row.status)">
-            {{ row.stage_label || row.status }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="阶段 / 说明" min-width="160" show-overflow-tooltip>
-        <template #default="{ row }">
-          <span v-if="row.error" class="err-text">{{ row.error }}</span>
-          <span v-else class="muted">{{ row.stage_label || '—' }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="页 / 块" width="110" align="center">
-        <template #default="{ row }">{{ formatPagesChunks(row) }}</template>
-      </el-table-column>
-      <el-table-column label="大小" width="90" align="center">
-        <template #default="{ row }">{{ formatSize(row.file_size) }}</template>
-      </el-table-column>
-      <el-table-column prop="created_at" label="上传时间" width="170" />
-      <el-table-column label="操作" width="200" fixed="right">
-        <template #default="{ row }">
-          <div class="row-actions" @click.stop>
-            <el-button link type="primary" @click="goPreview(row)">预览</el-button>
-            <el-button link @click="onReparse(row)">重析</el-button>
-            <el-button link type="danger" @click="onDelete(row)">删除</el-button>
+    <section class="upload-section" aria-labelledby="upload-heading">
+      <div class="section-heading">
+        <div>
+          <h2 id="upload-heading">上传文档</h2>
+          <p>支持 PDF、DOCX；单个任务完成后会自动刷新列表</p>
+        </div>
+        <span v-if="uploading" class="section-status">{{ uploadPct }}%</span>
+      </div>
+      <el-upload
+        class="docs-uploader"
+        drag
+        :show-file-list="false"
+        :http-request="customUpload"
+        accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        multiple
+        :disabled="uploading"
+        aria-label="上传 PDF 或 DOCX 文档"
+      >
+        <div class="upload-inner">
+          <el-icon class="upload-icon" aria-hidden="true"><DocumentAdd /></el-icon>
+          <div class="upload-main">
+            {{ uploading ? `上传中 ${uploadPct}%` : '拖拽文档到此处，或点击选择文件' }}
           </div>
-        </template>
-      </el-table-column>
-    </el-table>
-  </div>
+          <div class="upload-hint">
+            数字版 PDF 与 DOCX 可直接解析；CPU 解析可能需要数分钟
+          </div>
+          <el-progress
+            v-if="uploading"
+            class="upload-progress"
+            :percentage="uploadPct"
+            :show-text="false"
+          />
+        </div>
+      </el-upload>
+    </section>
+
+    <section class="surface-panel docs-list-panel" aria-labelledby="docs-list-heading">
+      <div class="surface-panel__header docs-list-header">
+        <div>
+          <h2 id="docs-list-heading">文档列表</h2>
+          <p>{{ statusText || '正在读取知识库状态' }}</p>
+        </div>
+        <span v-if="hasProcessing" class="live-status live-status--active">
+          <span aria-hidden="true" />自动更新
+        </span>
+      </div>
+
+      <div class="task-toolbar docs-toolbar" data-test="docs-toolbar">
+        <div class="task-toolbar__group task-toolbar__filters">
+          <el-select
+            v-model="statusFilter"
+            aria-label="文档状态"
+            style="width: 140px"
+            @change="onFilter"
+          >
+            <el-option label="全部状态" value="all" />
+            <el-option label="处理中" value="processing" />
+            <el-option label="已入库" value="ready" />
+            <el-option label="失败" value="failed" />
+            <el-option label="排队中" value="queued" />
+          </el-select>
+          <el-input
+            v-model="searchQ"
+            aria-label="搜索文件名"
+            placeholder="搜索文件名"
+            clearable
+            style="width: 220px"
+            @keyup.enter="onFilter"
+          />
+          <el-button type="primary" :icon="Search" @click="onFilter">搜索</el-button>
+          <el-button :icon="Close" @click="onClearFilter">清除</el-button>
+        </div>
+        <div class="task-toolbar__group">
+          <el-button :icon="RefreshRight" @click="loadAndPoll">刷新</el-button>
+        </div>
+      </div>
+
+      <div class="table-scroll">
+        <el-table
+          :data="rows"
+          v-loading="loading"
+          stripe
+          height="520"
+          empty-text="还没有文档。上传后可在此跟踪解析进度"
+          class="docs-table"
+          @row-click="goPreview"
+        >
+          <el-table-column prop="filename" label="文件名" min-width="220" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span class="linkish">{{ row.filename }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="类型" width="80" align="center">
+            <template #default="{ row }">
+              <el-tag size="small" type="info" effect="plain">{{ (row.ext || '').toUpperCase() || '—' }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="112" align="center">
+            <template #default="{ row }">
+              <el-tag size="small" :type="statusTagType(row.status)">
+                {{ row.stage_label || row.status }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="阶段 / 说明" min-width="170" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span v-if="row.error" class="err-text">{{ row.error }}</span>
+              <span v-else class="muted">{{ row.stage_label || '—' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="页 / 块" width="112" align="center">
+            <template #default="{ row }">{{ formatPagesChunks(row) }}</template>
+          </el-table-column>
+          <el-table-column label="大小" width="96" align="center">
+            <template #default="{ row }">{{ formatSize(row.file_size) }}</template>
+          </el-table-column>
+          <el-table-column prop="created_at" label="上传时间" width="170" />
+          <el-table-column label="操作" width="216" fixed="right">
+            <template #default="{ row }">
+              <div class="row-actions" @click.stop>
+                <el-button link type="primary" :icon="View" @click="goPreview(row)">预览</el-button>
+                <el-button link :icon="RefreshRight" @click="onReparse(row)">重析</el-button>
+                <el-button link type="danger" :icon="Delete" @click="onDelete(row)">删除</el-button>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </section>
+  </main>
 </template>
 
 <style scoped>
-.docs-header {
-  margin-bottom: 12px;
-}
-
-.docs-title {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--text);
-  text-wrap: balance;
-}
-
-.docs-sub {
-  margin: 6px 0 0;
-  font-size: 13px;
-  color: var(--muted);
-}
-
 .docs-uploader {
   width: 100%;
-  margin-bottom: 14px;
 }
 
 .docs-uploader :deep(.el-upload) {
@@ -304,16 +332,17 @@ onUnmounted(() => {
 
 .docs-uploader :deep(.el-upload-dragger) {
   width: 100%;
-  padding: 28px 16px;
-  border-radius: 12px;
-  border-color: var(--border);
-  background: #fafbfc;
+  min-height: 188px;
+  padding: 34px 20px;
+  border: 1px dashed var(--outline);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
   transition: border-color 0.18s ease, background 0.18s ease;
 }
 
 .docs-uploader :deep(.el-upload-dragger:hover) {
-  border-color: var(--primary);
-  background: var(--user-bg);
+  border-color: var(--action);
+  background: #f5f8ff;
 }
 
 .upload-inner {
@@ -324,27 +353,32 @@ onUnmounted(() => {
 }
 
 .upload-icon {
-  font-size: 28px;
-  line-height: 1;
-  margin-bottom: 4px;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 6px;
+  border-radius: var(--radius-md);
+  color: var(--action);
+  background: var(--action-soft);
+  font-size: 24px;
 }
 
 .upload-main {
   font-size: 15px;
-  font-weight: 600;
-  color: var(--text);
+  font-weight: 700;
+  color: var(--ink);
 }
 
 .upload-hint {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--ink-muted);
   max-width: 42rem;
   text-align: center;
   line-height: 1.5;
 }
 
-.docs-toolbar {
-  margin-bottom: 12px;
+.upload-progress {
+  width: min(420px, 100%);
+  margin-top: 8px;
 }
 
 .docs-table {
@@ -352,17 +386,17 @@ onUnmounted(() => {
 }
 
 .linkish {
-  color: var(--primary);
-  font-weight: 500;
+  color: var(--action);
+  font-weight: 600;
 }
 
 .err-text {
-  color: #dc2626;
+  color: var(--danger);
   font-size: 13px;
 }
 
 .muted {
-  color: var(--muted);
+  color: var(--ink-muted);
   font-size: 13px;
 }
 
@@ -370,5 +404,16 @@ onUnmounted(() => {
   display: flex;
   gap: 2px;
   flex-wrap: wrap;
+}
+
+@media (max-width: 600px) {
+  .docs-uploader :deep(.el-upload-dragger) {
+    min-height: 164px;
+    padding: 26px 14px;
+  }
+
+  .upload-main {
+    font-size: 14px;
+  }
 }
 </style>

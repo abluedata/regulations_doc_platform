@@ -150,7 +150,7 @@ async function goPrevious() {
 
 .page-heading h1 {
   margin-bottom: 8px;
-  font-size: clamp(28px, 3vw, 42px);
+  font-size: 36px;
 }
 
 .page-heading p {
@@ -466,6 +466,10 @@ async function goPrevious() {
 }
 
 @media (max-width: 480px) {
+  .page-heading h1 {
+    font-size: 28px;
+  }
+
   .template-grid {
     grid-template-columns: 1fr;
   }

@@ -49,6 +49,11 @@ function browseFiles() {
   fileInput.value?.click()
 }
 
+function removeFile(id: string) {
+  const index = review.files.findIndex((file) => file.id === id)
+  if (index >= 0) review.files.splice(index, 1)
+}
+
 async function goNext() {
   review.nextStep()
   await router.push({ name: 'review-templates' })
@@ -107,7 +112,13 @@ async function goPrevious() {
                 <el-icon aria-hidden="true"><component :is="fileStatusIcon(file)" /></el-icon>
                 {{ fileStatusLabel(file) }}
               </span>
-              <button class="icon-button file-row__remove" type="button" aria-label="移除文件">
+              <button
+                class="icon-button file-row__remove"
+                type="button"
+                :aria-label="`移除 ${file.name}`"
+                :data-test="`remove-file-${file.id}`"
+                @click="removeFile(file.id)"
+              >
                 <el-icon aria-hidden="true"><Delete /></el-icon>
               </button>
             </li>
@@ -183,7 +194,7 @@ async function goPrevious() {
 
 .page-heading h1 {
   margin-bottom: 6px;
-  font-size: clamp(28px, 3vw, 42px);
+  font-size: 36px;
 }
 
 .page-heading p,
@@ -598,6 +609,10 @@ async function goPrevious() {
 }
 
 @media (max-width: 600px) {
+  .page-heading h1 {
+    font-size: 28px;
+  }
+
   .page-heading {
     align-items: stretch;
     flex-direction: column;

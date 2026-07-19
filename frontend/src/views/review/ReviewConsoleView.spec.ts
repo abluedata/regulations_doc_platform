@@ -27,4 +27,19 @@ describe('ReviewConsoleView', () => {
 
     expect(store.analysisStatus).toBe('approved')
   })
+
+  it('disables approval while the demo analysis is running', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/review/console', name: 'review-console', component: ReviewConsoleView }],
+    })
+    await router.push('/review/console')
+    await router.isReady()
+
+    const store = useReviewStore()
+    store.startAnalysis()
+    const wrapper = mount(ReviewConsoleView, { global: { plugins: [router, ElementPlus] } })
+
+    expect(wrapper.get('[data-test="approve-draft"]').attributes('disabled')).toBeDefined()
+  })
 })

@@ -165,8 +165,13 @@ async function goPrevious() {
           已定位到 {{ review.risks.find((risk) => risk.id === selectedRiskId)?.section }}，正文中的高亮段落与此发现对应。
         </div>
         <div class="console-actions">
-          <el-button type="danger" plain @click="rejectChanges">拒绝更改</el-button>
-          <el-button data-test="approve-draft" type="primary" @click="approveDraft">批准草案</el-button>
+          <el-button type="danger" plain :disabled="review.analysisStatus !== 'complete'" @click="rejectChanges">拒绝更改</el-button>
+          <el-button
+            data-test="approve-draft"
+            type="primary"
+            :disabled="review.analysisStatus !== 'complete'"
+            @click="approveDraft"
+          >批准草案</el-button>
           <el-button plain @click="exportReport">
             <el-icon aria-hidden="true"><Download /></el-icon>
             导出详细报告
@@ -211,7 +216,7 @@ async function goPrevious() {
 
 .console-header h1 {
   margin: 0 0 5px;
-  font-size: clamp(24px, 3vw, 34px);
+  font-size: 34px;
 }
 
 .console-header p {
@@ -583,6 +588,10 @@ async function goPrevious() {
 }
 
 @media (max-width: 680px) {
+  .console-title-row h1 {
+    font-size: 28px;
+  }
+
   .console-header {
     align-items: stretch;
     flex-direction: column;

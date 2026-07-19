@@ -32,4 +32,22 @@ describe('ReviewUploadView', () => {
     expect(useReviewStore().currentStep).toBe(2)
     expect(router.currentRoute.value.name).toBe('review-templates')
   })
+
+  it('removes a file from the local demo queue', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/review/upload', name: 'review-upload', component: ReviewUploadView }],
+    })
+    await router.push('/review/upload')
+    await router.isReady()
+
+    const wrapper = mount(ReviewUploadView, { global: { plugins: [router, ElementPlus] } })
+    const store = useReviewStore()
+    expect(store.files).toHaveLength(3)
+
+    await wrapper.get('[data-test="remove-file-msa-services"]').trigger('click')
+
+    expect(store.files).toHaveLength(2)
+    expect(store.files.some((file) => file.id === 'msa-services')).toBe(false)
+  })
 })

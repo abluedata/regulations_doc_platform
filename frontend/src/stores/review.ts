@@ -25,7 +25,7 @@ const DEMO_TEMPLATES: ReviewTemplate[] = [
     popular: true,
   },
   {
-    id: 'service-agreement',
+    id: 'services',
     name: '主服务协议',
     category: '商业合同',
     description: '覆盖服务范围、付款、责任和终止条件的商业合同审查。',
@@ -146,11 +146,12 @@ export const useReviewStore = defineStore('review', () => {
 
   function toggleClause(id: string) {
     const clause = clauses.value.find((item) => item.id === id)
-    if (clause) clause.enabled = !clause.enabled
+    if (!clause || clause.disabled) return
+    clause.enabled = !clause.enabled
   }
 
   function setSensitivity(value: number) {
-    sensitivity.value = value
+    sensitivity.value = Math.min(100, Math.max(0, Math.round(value)))
   }
 
   function completeAnalysis() {

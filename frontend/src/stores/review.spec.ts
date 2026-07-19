@@ -30,13 +30,13 @@ describe('review store', () => {
   it('updates template, clauses, tuning and approval state locally', () => {
     const store = useReviewStore()
 
-    store.selectTemplate('mutual-nda')
+    store.selectTemplate('services')
     store.toggleClause('payment-terms')
     store.setSensitivity(72)
     store.completeAnalysis()
     store.approveDraft()
 
-    expect(store.selectedTemplateId).toBe('mutual-nda')
+    expect(store.selectedTemplateId).toBe('services')
     expect(store.clauses.find((item) => item.id === 'payment-terms')?.enabled).toBe(false)
     expect(store.sensitivity).toBe(72)
     expect(store.analysisStatus).toBe('approved')
@@ -51,5 +51,25 @@ describe('review store', () => {
 
     expect(store.clauses.filter((item) => item.enabled)).toHaveLength(enabledCount)
     expect(store.analysisStatus).toBe('rejected')
+  })
+
+  it('clamps sensitivity to the supported percentage range', () => {
+    const store = useReviewStore()
+
+    store.setSensitivity(-10)
+    expect(store.sensitivity).toBe(0)
+
+    store.setSensitivity(105)
+    expect(store.sensitivity).toBe(100)
+  })
+
+  it('does not toggle disabled clauses', () => {
+    const store = useReviewStore()
+    const clause = store.clauses.find((item) => item.id === 'non-compete')
+
+    expect(clause?.disabled).toBe(true)
+    expect(clause?.enabled).toBe(false)
+    store.toggleClause('non-compete')
+    expect(clause?.enabled).toBe(false)
   })
 })

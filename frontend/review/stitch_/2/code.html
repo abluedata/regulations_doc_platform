@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+
+<html class="light" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            line-height: 1;
+            vertical-align: middle;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(226, 232, 240, 0.8);
+        }
+        .stepper-line {
+            height: 2px;
+            background: #E2E8F0;
+            flex-grow: 1;
+            margin: 0 16px;
+        }
+        .active-stepper-line {
+            background: #0051d5;
+        }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "inverse-on-surface": "#eaf1ff",
+                      "surface-variant": "#d3e4fe",
+                      "outline": "#76777d",
+                      "tertiary-fixed": "#e0e3e5",
+                      "on-tertiary-container": "#818486",
+                      "on-secondary-fixed": "#00174b",
+                      "tertiary-container": "#191c1e",
+                      "surface-dim": "#cbdbf5",
+                      "inverse-primary": "#bec6e0",
+                      "surface-tint": "#565e74",
+                      "secondary-container": "#316bf3",
+                      "on-primary": "#ffffff",
+                      "on-primary-fixed": "#131b2e",
+                      "inverse-surface": "#213145",
+                      "surface-container": "#e5eeff",
+                      "error": "#ba1a1a",
+                      "on-tertiary-fixed-variant": "#444749",
+                      "on-primary-fixed-variant": "#3f465c",
+                      "surface-container-lowest": "#ffffff",
+                      "background": "#f8f9ff",
+                      "surface-container-low": "#eff4ff",
+                      "on-tertiary": "#ffffff",
+                      "secondary-fixed": "#dbe1ff",
+                      "on-error": "#ffffff",
+                      "on-surface-variant": "#45464d",
+                      "primary-fixed": "#dae2fd",
+                      "surface": "#f8f9ff",
+                      "on-background": "#0b1c30",
+                      "surface-container-high": "#dce9ff",
+                      "outline-variant": "#c6c6cd",
+                      "surface-bright": "#f8f9ff",
+                      "primary-container": "#131b2e",
+                      "on-tertiary-fixed": "#191c1e",
+                      "error-container": "#ffdad6",
+                      "on-secondary": "#ffffff",
+                      "primary": "#000000",
+                      "on-secondary-fixed-variant": "#003ea8",
+                      "tertiary-fixed-dim": "#c4c7c9",
+                      "secondary": "#0051d5",
+                      "secondary-fixed-dim": "#b4c5ff",
+                      "on-primary-container": "#7c839b",
+                      "tertiary": "#000000",
+                      "surface-container-highest": "#d3e4fe",
+                      "primary-fixed-dim": "#bec6e0",
+                      "on-error-container": "#93000a",
+                      "on-secondary-container": "#fefcff",
+                      "on-surface": "#0b1c30"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "container-max": "1440px",
+                      "xl": "32px",
+                      "base": "4px",
+                      "3xl": "64px",
+                      "gutter": "24px",
+                      "2xl": "48px",
+                      "xs": "4px",
+                      "md": "16px",
+                      "sm": "8px",
+                      "lg": "24px"
+              },
+              "fontFamily": {
+                      "body-sm": ["Inter"],
+                      "body-md": ["Inter"],
+                      "body-lg": ["Inter"],
+                      "display-lg": ["Inter"],
+                      "headline-lg": ["Inter"],
+                      "label-md": ["Inter"],
+                      "headline-sm": ["Inter"],
+                      "headline-lg-mobile": ["Inter"],
+                      "label-sm": ["Inter"],
+                      "headline-md": ["Inter"]
+              },
+              "fontSize": {
+                      "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                      "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                      "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                      "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                      "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                      "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "500"}],
+                      "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                      "headline-lg-mobile": ["28px", {"lineHeight": "36px", "fontWeight": "600"}],
+                      "label-sm": ["12px", {"lineHeight": "16px", "fontWeight": "600"}],
+                      "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}]
+              }
+            },
+          },
+        }
+    </script>
+</head>
+<body class="bg-background text-on-surface min-h-screen flex flex-col">
+<!-- TopNavBar -->
+<header class="bg-surface border-b border-outline-variant docked full-width top-0 z-50 sticky">
+<div class="flex justify-between items-center w-full px-lg h-16 max-w-container-max mx-auto">
+<div class="flex items-center gap-xl">
+<span class="font-headline-md text-headline-md font-bold text-primary">DocReview AI</span>
+<nav class="hidden md:flex items-center gap-lg h-16">
+<a class="font-body-md text-body-md text-on-surface-variant flex items-center h-full hover:text-primary transition-colors" href="#">仪表板</a>
+<a class="font-body-md text-body-md text-secondary border-b-2 border-secondary flex items-center h-full" href="#">范本</a>
+<a class="font-body-md text-body-md text-on-surface-variant flex items-center h-full hover:text-primary transition-colors" href="#">归档</a>
+<a class="font-body-md text-body-md text-on-surface-variant flex items-center h-full hover:text-primary transition-colors" href="#">设置</a>
+</nav>
+</div>
+<div class="flex items-center gap-md">
+<div class="relative hidden sm:block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
+<input class="pl-10 pr-4 py-2 bg-surface-container-low border border-outline-variant rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-secondary w-64" placeholder="全局搜索..." type="text"/>
+</div>
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary p-2">notifications</button>
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary p-2">help</button>
+<div class="w-8 h-8 rounded-full overflow-hidden bg-surface-container-high border border-outline-variant">
+<img alt="User Profile" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDq2s1bPcSt0WgIDrReFee1p-zDzPu-CuZglHohDhYNMxBYS__EkXmQaPQJABpgSZlfp8d5Q5fL_2C4l5nliwekt9lxu99-ONuwTn9YXMqvl_tN_QsvQMNIpLM8S4KhQckIrYUcrbSzzTKUooEf0PDxcSzYcJFg3HW6-HeakP97WFBMgF-G9Q1EiHQ_8ceqjB6O5-pdAk4HRF8whqiYYhs0_aMe9cCUkAHJ-Nn51tc52-MKXVC9YpBgAO2QZGgXmKyZcR1dGGo3Mcc"/>
+</div>
+</div>
+</div>
+</header>
+<main class="flex-grow flex flex-col md:flex-row max-w-container-max mx-auto w-full">
+<!-- Main Content Area -->
+<section class="flex-grow p-lg md:p-2xl flex flex-col gap-xl">
+<!-- Progress Stepper -->
+<div class="flex items-center justify-between max-w-4xl mx-auto w-full mb-8">
+<div class="flex flex-col items-center gap-2">
+<div class="w-10 h-10 rounded-full bg-secondary text-on-secondary flex items-center justify-center font-bold">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">check</span>
+</div>
+<span class="font-label-sm text-label-sm text-secondary">1. 文档上传</span>
+</div>
+<div class="stepper-line active-stepper-line"></div>
+<div class="flex flex-col items-center gap-2">
+<div class="w-10 h-10 rounded-full bg-secondary text-on-secondary flex items-center justify-center font-bold ring-4 ring-secondary-container">
+                    2
+                </div>
+<span class="font-label-sm text-label-sm text-secondary">2. 范本选择</span>
+</div>
+<div class="stepper-line"></div>
+<div class="flex flex-col items-center gap-2">
+<div class="w-10 h-10 rounded-full bg-surface-container-high text-on-surface-variant flex items-center justify-center font-bold">
+                    3
+                </div>
+<span class="font-label-sm text-label-sm text-on-surface-variant">3. 条款设置</span>
+</div>
+<div class="stepper-line"></div>
+<div class="flex flex-col items-center gap-2">
+<div class="w-10 h-10 rounded-full bg-surface-container-high text-on-surface-variant flex items-center justify-center font-bold">
+                    4
+                </div>
+<span class="font-label-sm text-label-sm text-on-surface-variant">4. 智能审查</span>
+</div>
+</div>
+<!-- Header Section -->
+<div class="text-center max-w-2xl mx-auto flex flex-col gap-sm">
+<h1 class="font-headline-lg text-headline-lg text-on-surface">选择分析范本</h1>
+<p class="font-body-md text-body-md text-on-surface-variant">为您的文档选择合适的法律框架。AI 将根据所选范本应用特定的合规检查和风险评估。</p>
+</div>
+<!-- Selection Controls -->
+<div class="flex flex-col sm:flex-row justify-between items-center gap-md">
+<div class="flex gap-sm overflow-x-auto hide-scrollbar w-full sm:w-auto">
+<button class="px-4 py-2 rounded-full bg-primary text-on-primary font-label-md text-label-md whitespace-nowrap">所有范本</button>
+<button class="px-4 py-2 rounded-full bg-surface-container text-on-surface-variant font-label-md text-label-md whitespace-nowrap hover:bg-surface-container-high">交易类</button>
+<button class="px-4 py-2 rounded-full bg-surface-container text-on-surface-variant font-label-md text-label-md whitespace-nowrap hover:bg-surface-container-high">雇佣类</button>
+<button class="px-4 py-2 rounded-full bg-surface-container text-on-surface-variant font-label-md text-label-md whitespace-nowrap hover:bg-surface-container-high">知识产权</button>
+</div>
+<div class="relative w-full sm:w-80">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
+<input class="w-full pl-10 pr-4 py-2 bg-white border border-outline-variant rounded-lg focus:ring-2 focus:ring-secondary focus:border-transparent outline-none" placeholder="搜索范本..." type="text"/>
+</div>
+</div>
+<!-- Template Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-lg">
+<!-- Template Card 1 -->
+<div class="group relative bg-white border border-outline-variant rounded-xl p-md flex flex-col gap-md transition-all hover:shadow-lg hover:-translate-y-1 cursor-pointer ring-2 ring-secondary">
+<div class="flex justify-between items-start">
+<div class="w-12 h-12 rounded-lg bg-secondary-container flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined text-3xl">gavel</span>
+</div>
+<span class="px-2 py-1 rounded bg-secondary-container/10 text-secondary font-label-sm text-label-sm">热门</span>
+</div>
+<div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface group-hover:text-secondary transition-colors">互保密协议</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1 leading-relaxed">用于商业探索期间相互交换信息的标准保密协议。</p>
+</div>
+<div class="pt-md border-t border-outline-variant flex flex-wrap gap-2">
+<span class="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant bg-surface-container-high px-2 py-1 rounded">24 AI 检查项</span>
+<span class="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant bg-surface-container-high px-2 py-1 rounded">商业</span>
+</div>
+</div>
+<!-- Template Card 2 -->
+<div class="group relative bg-white border border-outline-variant rounded-xl p-md flex flex-col gap-md transition-all hover:shadow-lg hover:-translate-y-1 cursor-pointer ring-2 ring-transparent">
+<div class="flex justify-between items-start">
+<div class="w-12 h-12 rounded-lg bg-surface-container-high flex items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined text-3xl">handshake</span>
+</div>
+</div>
+<div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface group-hover:text-secondary transition-colors">服务协议</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1 leading-relaxed">涵盖责任、赔偿和 SLA 要求的综合主服务协议。</p>
+</div>
+<div class="pt-md border-t border-outline-variant flex flex-wrap gap-2">
+<span class="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant bg-surface-container-high px-2 py-1 rounded">38 AI 检查项</span>
+<span class="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant bg-surface-container-high px-2 py-1 rounded">采购</span>
+</div>
+</div>
+<!-- Template Card 3 -->
+<div class="group relative bg-white border border-outline-variant rounded-xl p-md flex flex-col gap-md transition-all hover:shadow-lg hover:-translate-y-1 cursor-pointer ring-2 ring-transparent">
+<div class="flex justify-between items-start">
+<div class="w-12 h-12 rounded-lg bg-surface-container-high flex items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined text-3xl">badge</span>
+</div>
+</div>
+<div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface group-hover:text-secondary transition-colors">录用通知书</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1 leading-relaxed">包含竞业禁止和知识产权转让条款的高管级雇佣协议。</p>
+</div>
+<div class="pt-md border-t border-outline-variant flex flex-wrap gap-2">
+<span class="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant bg-surface-container-high px-2 py-1 rounded">15 AI 检查项</span>
+<span class="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant bg-surface-container-high px-2 py-1 rounded">人事政策</span>
+</div>
+</div>
+<!-- Template Card 4 -->
+<div class="group relative bg-white border border-outline-variant rounded-xl p-md flex flex-col gap-md transition-all hover:shadow-lg hover:-translate-y-1 cursor-pointer ring-2 ring-transparent">
+<div class="flex justify-between items-start">
+<div class="w-12 h-12 rounded-lg bg-surface-container-high flex items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined text-3xl">copyright</span>
+</div>
+</div>
+<div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface group-hover:text-secondary transition-colors">知识产权转让</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1 leading-relaxed">知识产权、发明和专利代码资产的法律转让。</p>
+</div>
+<div class="pt-md border-t border-outline-variant flex flex-wrap gap-2">
+<span class="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant bg-surface-container-high px-2 py-1 rounded">21 AI 检查项</span>
+<span class="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant bg-surface-container-high px-2 py-1 rounded">知识产权法</span>
+</div>
+</div>
+<!-- Template Card 5 -->
+<div class="group relative bg-white border border-outline-variant rounded-xl p-md flex flex-col gap-md transition-all hover:shadow-lg hover:-translate-y-1 cursor-pointer ring-2 ring-transparent">
+<div class="flex justify-between items-start">
+<div class="w-12 h-12 rounded-lg bg-surface-container-high flex items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined text-3xl">real_estate_agent</span>
+</div>
+</div>
+<div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface group-hover:text-secondary transition-colors">租赁协议</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1 leading-relaxed">专注于租金递增和维护义务的商业房地产租赁分析。</p>
+</div>
+<div class="pt-md border-t border-outline-variant flex flex-wrap gap-2">
+<span class="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant bg-surface-container-high px-2 py-1 rounded">42 AI 检查项</span>
+<span class="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant bg-surface-container-high px-2 py-1 rounded">房地产</span>
+</div>
+</div>
+<!-- Custom Template / Create New -->
+<div class="group relative bg-surface-container-low border border-dashed border-outline rounded-xl p-md flex flex-col items-center justify-center gap-md transition-all hover:bg-surface-container hover:border-secondary cursor-pointer">
+<div class="w-12 h-12 rounded-full bg-white flex items-center justify-center text-secondary shadow-sm">
+<span class="material-symbols-outlined text-3xl">add</span>
+</div>
+<div class="text-center">
+<h3 class="font-label-md text-label-md text-on-surface font-bold">创建自定义范本</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">构建您自己的规则集</p>
+</div>
+</div>
+</div>
+<!-- Footer Navigation -->
+<div class="mt-auto pt-xl border-t border-outline-variant flex justify-between items-center">
+<button class="flex items-center gap-2 px-6 py-2 rounded-lg border border-outline-variant text-on-surface-variant font-label-md text-label-md hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined">arrow_back</span>
+                上一步
+            </button>
+<div class="hidden md:block">
+<p class="text-on-surface-variant font-label-sm text-label-sm italic text-center">选择后将立即开始分析</p>
+</div>
+<button class="flex items-center gap-2 px-8 py-3 rounded-lg bg-secondary text-on-secondary font-label-md text-label-md shadow-lg hover:opacity-90 active:scale-[0.98] transition-all">
+                下一步
+                <span class="material-symbols-outlined">arrow_forward</span>
+</button>
+</div>
+</section>
+<!-- Right Side Panel: Summary/Context -->
+<aside class="w-full md:w-80 p-lg bg-surface-container-lowest border-l border-outline-variant hidden xl:flex flex-col gap-lg overflow-y-auto">
+<h4 class="font-label-md text-label-md font-bold text-on-surface uppercase tracking-widest">文档洞察</h4>
+<div class="glass-card rounded-xl p-md flex flex-col gap-sm">
+<div class="w-full aspect-[4/3] rounded-lg overflow-hidden relative">
+<img alt="Document Preview" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAToEyiioB1B7HeABXwmiAQCtSDjUoCzMy6CkmnCn1c60j4Ht9C-KEua0mJf7QZTVj3mir0h4HIpLR5oieDBAk5vY5Lca5zOpRdWjZfiqnRmqhHjf2BZmPOaEQtwYzx3PofdAHBOjtlRdrcPBGXYWCNgPH2yHLIh1IsOXjruiHVLewcJ_Hz1FUVFz3GQiYznV4jiq8OM9HV3Vzvm7WZwEoDlCJ1z1_ynLouCy4BW-E_MY4rwEtTVF_yT2GNmfUlf4z6OwPZof5VrQQ"/>
+<div class="absolute inset-0 bg-gradient-to-t from-primary/20 to-transparent"></div>
+</div>
+<div>
+<h5 class="font-label-md text-label-md font-bold text-on-surface">NDA_Project_Apollo.pdf</h5>
+<p class="font-label-sm text-label-sm text-on-surface-variant">2分钟前上传 • 14 页</p>
+</div>
+</div>
+<div class="flex flex-col gap-md">
+<div class="flex flex-col gap-xs">
+<div class="flex justify-between font-label-sm text-label-sm">
+<span class="text-on-surface-variant">AI 检测匹配度</span>
+<span class="text-secondary font-bold">88% 匹配</span>
+</div>
+<div class="w-full h-1 bg-surface-container-high rounded-full overflow-hidden">
+<div class="h-full bg-secondary w-[88%]"></div>
+</div>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">根据检测到的条款，我们的 AI 建议使用 <span class="font-bold text-on-surface">互保密协议</span> 范本。</p>
+</div>
+<div class="mt-auto p-md bg-secondary-container/10 rounded-xl border border-secondary/20">
+<div class="flex items-start gap-sm">
+<span class="material-symbols-outlined text-secondary">info</span>
+<div class="flex flex-col gap-base">
+<span class="font-label-sm text-label-sm font-bold text-secondary">专业提示</span>
+<p class="font-body-sm text-body-sm text-on-secondary-container">与自定义规则相比，选择预定义范本可使分析速度提高 400%。</p>
+</div>
+</div>
+</div>
+</aside>
+</main>
+<script>
+    // Simple UI Interaction for Card Selection
+    document.querySelectorAll('.grid > div').forEach(card => {
+        card.addEventListener('click', function() {
+            // Ignore the 'Create New' card for selection visual logic
+            const icon = this.querySelector('.material-symbols-outlined');
+            if (icon && icon.textContent === 'add') return;
+
+            document.querySelectorAll('.grid > div').forEach(c => {
+                c.classList.remove('ring-secondary', 'ring-2');
+                c.classList.add('ring-transparent');
+            });
+            this.classList.add('ring-secondary', 'ring-2');
+            this.classList.remove('ring-transparent');
+        });
+    });
+
+    // Search Bar Focus Effect
+    const searchInput = document.querySelector('input[placeholder="搜索范本..."]');
+    if (searchInput) {
+        searchInput.addEventListener('focus', () => {
+            searchInput.parentElement.classList.add('shadow-md');
+        });
+        searchInput.addEventListener('blur', () => {
+            searchInput.parentElement.classList.remove('shadow-md');
+        });
+    }
+</script>
+</body></html>

@@ -23,7 +23,7 @@ from core.config import (
     ANSWER_ATTACH_TABLES,
     ANSWER_MAX_TABLES,
 )
-from core.table_utils import extract_tables_from_hits
+from services.utils import extract_tables_from_hits
 from services.search import hybrid_search, format_results_for_llm
 
 COMPLEX_KEYWORDS = ("比较", "区别", "各", "分别", "所有", "总结", "汇总")

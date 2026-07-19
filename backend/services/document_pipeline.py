@@ -37,7 +37,7 @@ from core.config import (
     ES_USER,
     INDEX_NAME,
 )
-from core.table_utils import (
+from services.utils import (
     grid_to_html,
     grid_to_markdown,
     looks_like_html_table,

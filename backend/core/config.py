@@ -9,8 +9,8 @@ import os
 from pathlib import Path
 
 # ─── 加载 .env（如果安装了 python-dotenv）───────────────────
-# 项目根目录（core/ 的上一级）
-_ROOT = Path(__file__).resolve().parent.parent
+# backend/core/config.py → backend/core/ → backend/ → 项目根
+_ROOT = Path(__file__).resolve().parents[2]
 
 try:
     from dotenv import load_dotenv

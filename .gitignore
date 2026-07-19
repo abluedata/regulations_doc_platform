@@ -21,6 +21,14 @@ ENV/
 .chat_data/
 .data/
 
+# ── 前端构建产物 / 依赖 ────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+
+# ── Trae skill 工作产物 ────────────────
+.superpowers/
+
 # ── IDE / 编辑器 ───────────────────────
 .vscode/
 .idea/
@@ -36,7 +44,3 @@ desktop.ini
 
 # ── 日志 ───────────────────────────────
 *.log
-
-# ── 前端 ───────────────────────────────
-frontend/node_modules/
-frontend/dist/

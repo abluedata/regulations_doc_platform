@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+
+<html class="light" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>DocReview AI - 条款与限制设置</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .clause-card:hover {
+            border-color: #316bf3;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+    </style>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "inverse-on-surface": "#eaf1ff",
+                    "surface-variant": "#d3e4fe",
+                    "outline": "#76777d",
+                    "tertiary-fixed": "#e0e3e5",
+                    "on-tertiary-container": "#818486",
+                    "on-secondary-fixed": "#00174b",
+                    "tertiary-container": "#191c1e",
+                    "surface-dim": "#cbdbf5",
+                    "inverse-primary": "#bec6e0",
+                    "surface-tint": "#565e74",
+                    "secondary-container": "#316bf3",
+                    "on-primary": "#ffffff",
+                    "on-primary-fixed": "#131b2e",
+                    "inverse-surface": "#213145",
+                    "surface-container": "#e5eeff",
+                    "error": "#ba1a1a",
+                    "on-tertiary-fixed-variant": "#444749",
+                    "on-primary-fixed-variant": "#3f465c",
+                    "surface-container-lowest": "#ffffff",
+                    "background": "#f8f9ff",
+                    "surface-container-low": "#eff4ff",
+                    "on-tertiary": "#ffffff",
+                    "secondary-fixed": "#dbe1ff",
+                    "on-error": "#ffffff",
+                    "on-surface-variant": "#45464d",
+                    "primary-fixed": "#dae2fd",
+                    "surface": "#f8f9ff",
+                    "on-background": "#0b1c30",
+                    "surface-container-high": "#dce9ff",
+                    "outline-variant": "#c6c6cd",
+                    "surface-bright": "#f8f9ff",
+                    "primary-container": "#131b2e",
+                    "on-tertiary-fixed": "#191c1e",
+                    "error-container": "#ffdad6",
+                    "on-secondary": "#ffffff",
+                    "primary": "#000000",
+                    "on-secondary-fixed-variant": "#003ea8",
+                    "tertiary-fixed-dim": "#c4c7c9",
+                    "secondary": "#0051d5",
+                    "secondary-fixed-dim": "#b4c5ff",
+                    "on-primary-container": "#7c839b",
+                    "tertiary": "#000000",
+                    "surface-container-highest": "#d3e4fe",
+                    "primary-fixed-dim": "#bec6e0",
+                    "on-error-container": "#93000a",
+                    "on-secondary-container": "#fefcff",
+                    "on-surface": "#0b1c30"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "container-max": "1440px",
+                    "xl": "32px",
+                    "base": "4px",
+                    "3xl": "64px",
+                    "gutter": "24px",
+                    "2xl": "48px",
+                    "xs": "4px",
+                    "md": "16px",
+                    "sm": "8px",
+                    "lg": "24px"
+            },
+            "fontFamily": {
+                    "body-sm": ["Inter"],
+                    "body-md": ["Inter"],
+                    "body-lg": ["Inter"],
+                    "display-lg": ["Inter"],
+                    "headline-lg": ["Inter"],
+                    "label-md": ["Inter"],
+                    "headline-sm": ["Inter"],
+                    "headline-lg-mobile": ["Inter"],
+                    "label-sm": ["Inter"],
+                    "headline-md": ["Inter"]
+            },
+            "fontSize": {
+                    "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                    "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "500"}],
+                    "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "headline-lg-mobile": ["28px", {"lineHeight": "36px", "fontWeight": "600"}],
+                    "label-sm": ["12px", {"lineHeight": "16px", "fontWeight": "600"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}]
+            }
+          },
+        },
+      }
+    </script>
+</head>
+<body class="bg-background text-on-surface font-body-md min-h-screen flex flex-col">
+<!-- 顶部导航栏 -->
+<header class="bg-surface border-b border-outline-variant h-16 sticky top-0 z-50">
+<div class="flex justify-between items-center w-full px-lg h-16 max-w-container-max mx-auto">
+<div class="flex items-center gap-xl">
+<span class="font-headline-md text-headline-md font-bold text-primary">DocReview AI</span>
+<nav class="hidden md:flex gap-lg h-full items-center translate-y-1">
+<a class="font-body-md text-body-md text-on-surface-variant hover:text-primary transition-colors" href="#">工作台</a>
+<a class="font-body-md text-body-md text-secondary border-b-2 border-secondary pb-1" href="#">模板库</a>
+<a class="font-body-md text-body-md text-on-surface-variant hover:text-primary transition-colors" href="#">归档</a>
+<a class="font-body-md text-body-md text-on-surface-variant hover:text-primary transition-colors" href="#">设置</a>
+</nav>
+</div>
+<div class="flex items-center gap-md">
+<button class="p-base rounded-full hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant">notifications</span>
+</button>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-outline-variant ml-sm">
+<img alt="用户头像" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD_KSKISoeIM5n58917QLme-Ckg5ho9EufaJfh5OibDP2prePr9x0WDwMgnPNewt9HXNuekzbg207I1hOzhhTrNbtPEqrIQYnDZxjJxuejdHuUUQn2h0jRB8UvNY60ILM7fibw0pG_LHvzKIm5_Kq8UVWLwO4lkVVgZBp6Q7CJD_TU1ssHABYJR6uERdqTKeC7puXZO_snQAzXfqcp3Xoc3_F9XLbCwkfcMHDM3fdqbxqNRVTo8FqqcKf4nf1sgtiT0FVNLXET4gbQ"/>
+</div>
+</div>
+</div>
+</header>
+<div class="flex flex-1 overflow-hidden">
+<!-- 侧边导航栏 -->
+<aside class="w-64 bg-surface-container-low border-r border-outline-variant flex flex-col shrink-0">
+<div class="p-md">
+<div class="flex items-center gap-sm mb-md">
+<div class="w-10 h-10 bg-primary rounded flex items-center justify-center">
+<span class="material-symbols-outlined text-on-primary">gavel</span>
+</div>
+<div>
+<h2 class="font-label-md text-label-md font-bold text-on-surface">法务中心</h2>
+<p class="text-[10px] text-on-surface-variant uppercase tracking-wider">企业级方案</p>
+</div>
+</div>
+<button class="w-full bg-secondary text-on-secondary font-label-md py-sm px-md rounded flex items-center justify-center gap-sm hover:opacity-90 transition-all">
+<span class="material-symbols-outlined text-[18px]">add</span>
+                    新建分析
+                </button>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-md text-on-surface-variant px-md py-sm hover:bg-surface-container transition-all" href="#">
+<span class="material-symbols-outlined">folder_open</span>
+<span class="font-label-md text-label-md">当前批次</span>
+</a>
+<a class="flex items-center gap-md bg-surface-container-high text-secondary border-l-4 border-secondary px-md py-sm" href="#">
+<span class="material-symbols-outlined">history</span>
+<span class="font-label-md text-label-md">最近文档</span>
+</a>
+<a class="flex items-center gap-md text-on-surface-variant px-md py-sm hover:bg-surface-container transition-all" href="#">
+<span class="material-symbols-outlined">grade</span>
+<span class="font-label-md text-label-md">星标条款</span>
+</a>
+</nav>
+<div class="p-md border-t border-outline-variant space-y-1">
+<a class="flex items-center gap-md text-on-surface-variant px-md py-sm hover:bg-surface-container" href="#">
+<span class="material-symbols-outlined">account_circle</span>
+<span class="font-label-md">账户中心</span>
+</a>
+<a class="flex items-center gap-md text-on-surface-variant px-md py-sm hover:bg-surface-container" href="#">
+<span class="material-symbols-outlined">logout</span>
+<span class="font-label-md">退出登录</span>
+</a>
+</div>
+</aside>
+<!-- 主内容区域 -->
+<main class="flex-1 overflow-y-auto bg-background custom-scrollbar">
+<div class="max-w-6xl mx-auto p-lg">
+<!-- 步骤条 -->
+<div class="flex items-center justify-center gap-md mb-xl">
+<div class="flex items-center gap-sm">
+<div class="w-8 h-8 rounded-full bg-secondary/10 border border-secondary text-secondary flex items-center justify-center font-bold text-sm">
+<span class="material-symbols-outlined text-[16px]">check</span>
+</div>
+<span class="text-on-surface-variant font-label-sm">1. 文档上传</span>
+</div>
+<div class="h-[1px] w-12 bg-outline-variant"></div>
+<div class="flex items-center gap-sm">
+<div class="w-8 h-8 rounded-full bg-secondary/10 border border-secondary text-secondary flex items-center justify-center font-bold text-sm">
+<span class="material-symbols-outlined text-[16px]">check</span>
+</div>
+<span class="text-on-surface-variant font-label-sm">2. 范本选择</span>
+</div>
+<div class="h-[1px] w-12 bg-outline-variant"></div>
+<div class="flex items-center gap-sm">
+<div class="w-8 h-8 rounded-full bg-secondary text-on-secondary flex items-center justify-center font-bold text-sm ring-2 ring-secondary ring-offset-2">3</div>
+<span class="text-on-surface font-label-sm">3. 条款设置</span>
+</div>
+<div class="h-[1px] w-12 bg-outline-variant"></div>
+<div class="flex items-center gap-sm opacity-50">
+<div class="w-8 h-8 rounded-full border border-outline-variant text-outline flex items-center justify-center font-bold text-sm">4</div>
+<span class="text-outline font-label-sm">4. 智能审查</span>
+</div>
+</div>
+<div class="mb-xl">
+<h1 class="font-headline-lg text-headline-lg text-on-surface mb-xs">审查规则与约束配置</h1>
+<p class="font-body-md text-on-surface-variant max-w-3xl">配置您的AI分析参数。选择要在文档批次中识别并标记的特定法律条款和运营约束。</p>
+</div>
+<div class="grid grid-cols-12 gap-lg items-start">
+<!-- 左侧：主要规则与设置 -->
+<div class="col-span-12 lg:col-span-8 space-y-xl">
+<!-- 财务部分 -->
+<section>
+<div class="flex items-center justify-between mb-md">
+<h3 class="font-label-md text-label-md text-on-surface-variant uppercase tracking-widest font-bold">财务与支付</h3>
+<button class="text-secondary font-label-sm hover:underline">全选</button>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-md">
+<!-- 卡片 1 -->
+<div class="clause-card p-md bg-surface-container-lowest border border-outline-variant rounded-xl transition-all shadow-sm">
+<div class="flex justify-between items-start mb-md">
+<div class="p-sm bg-secondary-container/10 rounded-lg">
+<span class="material-symbols-outlined text-secondary">payments</span>
+</div>
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox"/>
+<div class="w-11 h-6 bg-outline-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-secondary"></div>
+</label>
+</div>
+<h4 class="font-headline-sm text-headline-sm mb-xs">付款条款</h4>
+<p class="text-body-sm text-on-surface-variant mb-md">监控 Net-X 天数及提前付款折扣。</p>
+<div class="flex items-center justify-between">
+<span class="px-sm py-[2px] bg-surface-container rounded text-[11px] font-bold text-on-surface-variant uppercase">阈值: 30 天</span>
+<button class="text-secondary text-sm font-bold flex items-center gap-1 hover:gap-2 transition-all">
+                                            配置 <span class="material-symbols-outlined text-[16px]">settings</span>
+</button>
+</div>
+</div>
+<!-- 卡片 2 -->
+<div class="clause-card p-md bg-surface-container-lowest border border-outline-variant rounded-xl transition-all shadow-sm">
+<div class="flex justify-between items-start mb-md">
+<div class="p-sm bg-secondary-container/10 rounded-lg">
+<span class="material-symbols-outlined text-secondary">trending_up</span>
+</div>
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox"/>
+<div class="w-11 h-6 bg-outline-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-secondary"></div>
+</label>
+</div>
+<h4 class="font-headline-sm text-headline-sm mb-xs">责任限额</h4>
+<p class="text-body-sm text-on-surface-variant mb-md">累计法律责任限额与合同价值对比。</p>
+<div class="flex items-center">
+<span class="px-sm py-[2px] bg-error-container rounded text-[11px] font-bold text-error uppercase">高优先级</span>
+</div>
+</div>
+</div>
+</section>
+<!-- 合规部分 -->
+<section>
+<div class="flex items-center justify-between mb-md">
+<h3 class="font-label-md text-label-md text-on-surface-variant uppercase tracking-widest font-bold">合规与运营</h3>
+<button class="text-secondary font-label-sm hover:underline">全选</button>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-md">
+<div class="p-md bg-surface-container-lowest border border-outline-variant rounded-xl flex flex-col justify-between shadow-sm">
+<div>
+<div class="flex justify-between items-center mb-sm">
+<span class="material-symbols-outlined text-secondary">shield_lock</span>
+<input checked="" class="w-4 h-4 rounded border-outline-variant text-secondary focus:ring-secondary" type="checkbox"/>
+</div>
+<h4 class="font-label-md text-label-md font-bold mb-xs">数据隐私</h4>
+</div>
+<p class="text-[13px] text-on-surface-variant mb-md leading-relaxed">GDPR/CCPA 数据传输协议。</p>
+<div class="flex items-center gap-sm">
+<div class="w-2 h-2 rounded-full bg-green-500"></div>
+<span class="text-[11px] font-medium text-on-surface-variant">正在监控</span>
+</div>
+</div>
+<div class="p-md bg-surface-container-lowest border border-outline-variant rounded-xl flex flex-col justify-between shadow-sm opacity-60 grayscale">
+<div>
+<div class="flex justify-between items-center mb-sm">
+<span class="material-symbols-outlined text-on-surface-variant">history_edu</span>
+<input class="w-4 h-4 rounded border-outline-variant text-secondary focus:ring-secondary" type="checkbox"/>
+</div>
+<h4 class="font-label-md text-label-md font-bold mb-xs">竞业禁止</h4>
+</div>
+<p class="text-[13px] text-on-surface-variant mb-md leading-relaxed">限制性契约及适用范围。</p>
+<span class="text-[11px] font-bold text-outline-variant uppercase">已禁用</span>
+</div>
+<button class="p-md bg-transparent border-2 border-dashed border-outline-variant rounded-xl flex flex-col items-center justify-center gap-sm hover:border-secondary hover:bg-surface-container transition-colors group">
+<span class="material-symbols-outlined text-outline-variant group-hover:text-secondary text-3xl">add_circle</span>
+<span class="font-label-sm text-outline-variant group-hover:text-secondary">添加自定义规则</span>
+</button>
+</div>
+</section>
+<!-- 高级微调 -->
+<section class="bg-surface-container p-lg rounded-xl border border-outline-variant">
+<div class="flex items-center gap-md mb-lg">
+<div class="p-sm bg-secondary rounded-lg">
+<span class="material-symbols-outlined text-on-secondary">tune</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm">模型微调</h3>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-xl">
+<div class="space-y-md">
+<div>
+<div class="flex justify-between items-center mb-sm">
+<label class="font-label-md text-on-surface font-bold">检测灵敏度</label>
+<span class="text-secondary font-bold" id="sensitivity-val">85%</span>
+</div>
+<input class="w-full h-2 bg-outline-variant rounded-full appearance-none cursor-pointer accent-secondary" oninput="document.getElementById('sensitivity-val').innerText = this.value + '%'" type="range" value="85"/>
+<div class="flex justify-between text-[11px] text-outline-variant font-bold mt-sm uppercase">
+<span>宽泛</span>
+<span>精准</span>
+</div>
+</div>
+</div>
+<div class="space-y-lg">
+<div class="space-y-xs">
+<label class="font-label-sm text-on-surface-variant uppercase font-bold tracking-wider">分析模型</label>
+<select class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg text-sm p-sm focus:ring-secondary focus:border-secondary outline-none">
+<option>Legal-LLM v2 (正式版)</option>
+<option>严苛合规引擎</option>
+<option>快速分析模式</option>
+</select>
+</div>
+<div class="space-y-xs">
+<label class="font-label-sm text-on-surface-variant uppercase font-bold tracking-wider">标记逻辑</label>
+<select class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg text-sm p-sm focus:ring-secondary focus:border-secondary outline-none">
+<option>标准审查标记</option>
+<option>仅高风险预警</option>
+</select>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- 右侧：概览面板 -->
+<div class="col-span-12 lg:col-span-4 lg:sticky lg:top-4">
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl shadow-xl p-lg flex flex-col gap-lg">
+<div>
+<h3 class="font-headline-sm text-headline-sm mb-lg">配置预览</h3>
+<div class="space-y-md">
+<div class="flex justify-between items-center pb-md border-b border-outline-variant">
+<span class="text-body-md text-on-surface-variant">已选条款</span>
+<span class="font-bold text-secondary text-lg">18</span>
+</div>
+<div class="flex justify-between items-center pb-md border-b border-outline-variant">
+<span class="text-body-md text-on-surface-variant">潜在违规</span>
+<span class="font-bold text-error text-lg">4 项激活</span>
+</div>
+<div class="flex justify-between items-center pb-md border-b border-outline-variant">
+<span class="text-body-md text-on-surface-variant">预计处理时长</span>
+<span class="font-bold text-lg">~1.2 分钟</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-body-md text-on-surface-variant">批次大小</span>
+<span class="font-bold text-lg">12 份文件</span>
+</div>
+</div>
+</div>
+<div class="p-md bg-surface-container-low rounded-xl border border-outline-variant space-y-md">
+<div class="flex items-center gap-sm">
+<div class="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></div>
+<span class="text-[12px] font-bold text-on-surface uppercase tracking-widest">模型就绪状态: 最佳</span>
+</div>
+<p class="text-sm text-on-surface-variant leading-relaxed">
+                                    继续操作将启动高精度扫描。结果将根据 <span class="font-bold text-on-surface">Q3 法务剧本</span> 进行对比。
+                                </p>
+</div>
+<div class="space-y-md pt-2">
+<button class="w-full bg-secondary text-on-secondary font-headline-sm py-md rounded-xl shadow-lg shadow-secondary/20 hover:shadow-secondary/40 hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center justify-center gap-md group" id="start-btn">
+                                    开始全量分析
+                                    <span class="material-symbols-outlined group-hover:translate-x-1 transition-transform">arrow_forward</span>
+</button>
+<button class="w-full border border-outline-variant text-on-surface font-label-md py-sm rounded-xl hover:bg-surface-container-high transition-colors">
+                                    保存配置为模板
+                                </button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+<!-- 过渡加载层 -->
+<div class="fixed inset-0 bg-background/90 backdrop-blur-xl z-[100] flex items-center justify-center opacity-0 pointer-events-none transition-all duration-500" id="loader">
+<div class="text-center">
+<div class="w-24 h-24 relative mb-md mx-auto">
+<div class="absolute inset-0 border-4 border-secondary/20 rounded-full"></div>
+<div class="absolute inset-0 border-4 border-t-secondary rounded-full animate-spin"></div>
+</div>
+<h2 class="font-headline-md text-headline-md text-on-surface mb-xs">正在分析批次</h2>
+<p class="text-on-surface-variant text-body-md">正在对 12 份法律文档进行条款扫描...</p>
+</div>
+</div>
+<script>
+        document.getElementById('start-btn').addEventListener('click', function() {
+            const loader = document.getElementById('loader');
+            loader.classList.remove('pointer-events-none', 'opacity-0');
+            
+            setTimeout(() => {
+                const title = loader.querySelector('h2');
+                const sub = loader.querySelector('p');
+                title.innerText = "分析已完成";
+                sub.innerText = "正在为您跳转至审查控制台...";
+                
+                setTimeout(() => {
+                    loader.classList.add('opacity-0');
+                    setTimeout(() => loader.classList.add('pointer-events-none'), 500);
+                }, 1200);
+            }, 2500);
+        });
+
+        // 切换状态样式
+        document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                const card = this.closest('.clause-card');
+                if (!card) return;
+                if (this.checked) {
+                    card.classList.remove('grayscale', 'opacity-60');
+                } else {
+                    card.classList.add('grayscale', 'opacity-60');
+                }
+            });
+        });
+    </script>
+</body></html>

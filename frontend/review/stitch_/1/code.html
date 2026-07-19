@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+
+<html class="light" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>DocReview AI - 上传配置</title>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Theme Configuration -->
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                "inverse-on-surface": "#eaf1ff",
+                "surface-variant": "#d3e4fe",
+                "outline": "#76777d",
+                "tertiary-fixed": "#e0e3e5",
+                "on-tertiary-container": "#818486",
+                "on-secondary-fixed": "#00174b",
+                "tertiary-container": "#191c1e",
+                "surface-dim": "#cbdbf5",
+                "inverse-primary": "#bec6e0",
+                "surface-tint": "#565e74",
+                "secondary-container": "#316bf3",
+                "on-primary": "#ffffff",
+                "on-primary-fixed": "#131b2e",
+                "inverse-surface": "#213145",
+                "surface-container": "#e5eeff",
+                "error": "#ba1a1a",
+                "on-tertiary-fixed-variant": "#444749",
+                "on-primary-fixed-variant": "#3f465c",
+                "surface-container-lowest": "#ffffff",
+                "background": "#f8f9ff",
+                "surface-container-low": "#eff4ff",
+                "on-tertiary": "#ffffff",
+                "secondary-fixed": "#dbe1ff",
+                "on-error": "#ffffff",
+                "on-surface-variant": "#45464d",
+                "primary-fixed": "#dae2fd",
+                "surface": "#f8f9ff",
+                "on-background": "#0b1c30",
+                "surface-container-high": "#dce9ff",
+                "outline-variant": "#c6c6cd",
+                "surface-bright": "#f8f9ff",
+                "primary-container": "#131b2e",
+                "on-tertiary-fixed": "#191c1e",
+                "error-container": "#ffdad6",
+                "on-secondary": "#ffffff",
+                "primary": "#000000",
+                "on-secondary-fixed-variant": "#003ea8",
+                "tertiary-fixed-dim": "#c4c7c9",
+                "secondary": "#0051d5",
+                "secondary-fixed-dim": "#b4c5ff",
+                "on-primary-container": "#7c839b",
+                "tertiary": "#000000",
+                "surface-container-highest": "#d3e4fe",
+                "primary-fixed-dim": "#bec6e0",
+                "on-error-container": "#93000a",
+                "on-surface": "#0b1c30"
+            },
+            "borderRadius": {
+                "DEFAULT": "0.125rem",
+                "lg": "0.25rem",
+                "xl": "0.5rem",
+                "full": "0.75rem"
+            },
+            "spacing": {
+                "container-max": "1440px",
+                "xl": "32px",
+                "base": "4px",
+                "3xl": "64px",
+                "gutter": "24px",
+                "2xl": "48px",
+                "xs": "4px",
+                "md": "16px",
+                "sm": "8px",
+                "lg": "24px"
+            },
+            "fontFamily": {
+                "body-sm": ["Inter"],
+                "body-md": ["Inter"],
+                "body-lg": ["Inter"],
+                "display-lg": ["Inter"],
+                "headline-lg": ["Inter"],
+                "label-md": ["Inter"],
+                "headline-sm": ["Inter"],
+                "headline-lg-mobile": ["Inter"],
+                "label-sm": ["Inter"],
+                "headline-md": ["Inter"]
+            },
+            "fontSize": {
+                "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "500"}],
+                "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                "headline-lg-mobile": ["28px", {"lineHeight": "36px", "fontWeight": "600"}],
+                "label-sm": ["12px", {"lineHeight": "16px", "fontWeight": "600"}],
+                "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}]
+            }
+          }
+        }
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            line-height: 1;
+            text-transform: none;
+            letter-spacing: normal;
+            word-wrap: normal;
+            white-space: nowrap;
+            direction: ltr;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #E2E8F0;
+            border-radius: 10px;
+        }
+        
+        .drop-zone-active {
+            border-color: #0051d5;
+            background-color: #eff4ff;
+        }
+
+        .stepper-line {
+            height: 2px;
+            flex-grow: 1;
+            background-color: #c6c6cd;
+        }
+        .stepper-line.active {
+            background-color: #000000;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body-md min-h-screen flex flex-col">
+<!-- TopNavBar -->
+<header class="fixed top-0 left-0 right-0 z-50 bg-surface border-b border-outline-variant">
+<div class="flex justify-between items-center w-full px-lg h-16 max-w-container-max mx-auto">
+<div class="flex items-center gap-xl">
+<span class="font-headline-md text-headline-md font-bold text-primary">DocReview AI</span>
+<nav class="hidden md:flex items-center gap-lg">
+<a class="font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors" href="#">控制台</a>
+<a class="font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors" href="#">范本</a>
+<a class="font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors" href="#">存档</a>
+<a class="font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors" href="#">设置</a>
+</nav>
+</div>
+<div class="flex items-center gap-md">
+<button class="p-base text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="p-base text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined" data-icon="help">help</span>
+</button>
+<div class="w-8 h-8 rounded-full bg-surface-container-high overflow-hidden border border-outline-variant">
+<img class="w-full h-full object-cover" data-alt="Close-up professional corporate headshot" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDzEqNJ69T-S_4_txY4bZ0UOXo7mL2wET_tPaiHDtFfxkp_sXn6ElXU7crKKzGE_CxEYTG0d7Ew_H6MU-BSVShh6BPm-Y30B36pg7-GulU0JIvk1Zkhy6rDsDH1j7SrCyWmcX_-dSuZbOEg0TVyeuAxA3gnfZpktp-965wKNhTlUU_ZDP7JOtyFAeWbXB9L2mKrupgm3nuNZhgU77hjx1_bQzV_aOFv1aB5WmzxgJMfCZsGxbDYxIac2G3IMOBxpjkNtxH2Ir5OmDs"/>
+</div>
+</div>
+</div>
+</header>
+<!-- Horizontal Stepper Section -->
+<div class="pt-16 bg-surface border-b border-outline-variant">
+<div class="max-w-container-max mx-auto px-lg py-md">
+<div class="flex items-center justify-between max-w-4xl mx-auto">
+<!-- Step 1: Active -->
+<div class="flex flex-col items-center gap-sm">
+<div class="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-label-md">1</div>
+<span class="font-label-sm text-label-sm text-primary">文档上传</span>
+</div>
+<div class="stepper-line active mx-md"></div>
+<!-- Step 2 -->
+<div class="flex flex-col items-center gap-sm">
+<div class="w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant text-on-surface-variant flex items-center justify-center font-label-md">2</div>
+<span class="font-label-sm text-label-sm text-on-surface-variant">范本选择</span>
+</div>
+<div class="stepper-line mx-md"></div>
+<!-- Step 3 -->
+<div class="flex flex-col items-center gap-sm">
+<div class="w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant text-on-surface-variant flex items-center justify-center font-label-md">3</div>
+<span class="font-label-sm text-label-sm text-on-surface-variant">条款设置</span>
+</div>
+<div class="stepper-line mx-md"></div>
+<!-- Step 4 -->
+<div class="flex flex-col items-center gap-sm">
+<div class="w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant text-on-surface-variant flex items-center justify-center font-label-md">4</div>
+<span class="font-label-sm text-label-sm text-on-surface-variant">智能审查</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Main Content Area -->
+<main class="flex-grow py-xl px-lg max-w-container-max mx-auto w-full grid grid-cols-12 gap-gutter">
+<!-- Configuration Center -->
+<div class="col-span-12 lg:col-span-9 space-y-lg">
+<!-- Header Section -->
+<div class="flex justify-between items-end">
+<div>
+<h1 class="font-headline-lg text-headline-lg text-primary">上传文档</h1>
+<p class="font-body-md text-body-md text-on-surface-variant mt-xs">添加您希望在此批次中分析的法律文档。</p>
+</div>
+<div class="flex gap-md">
+<button class="px-md py-sm border border-outline-variant rounded font-label-md text-label-md hover:bg-surface-container transition-all">从云端导入</button>
+</div>
+</div>
+<!-- Bento Layout Content -->
+<div class="grid grid-cols-1 gap-lg">
+<!-- Drop Zone -->
+<div class="relative group cursor-pointer border-2 border-dashed border-outline-variant rounded bg-surface-container-lowest p-2xl transition-all hover:border-secondary hover:bg-surface-container-low flex flex-col items-center justify-center text-center" id="drop-zone">
+<div class="w-16 h-16 rounded-full bg-surface-container-high flex items-center justify-center text-secondary mb-md transition-transform group-hover:scale-110">
+<span class="material-symbols-outlined text-[40px]" data-icon="cloud_upload">cloud_upload</span>
+</div>
+<h4 class="font-headline-sm text-headline-sm text-primary">拖拽文件至此</h4>
+<p class="font-body-md text-body-md text-on-surface-variant mt-xs max-w-xs mx-auto">
+                        支持多个 <span class="font-bold">PDF</span> 和 <span class="font-bold">DOCX</span> 文件。每个文件最大 50MB。
+                    </p>
+<input class="absolute inset-0 opacity-0 cursor-pointer" id="file-input" multiple="" type="file"/>
+<button class="mt-lg px-xl py-sm bg-secondary text-white rounded font-label-md text-label-md hover:shadow-lg transition-all">浏览文件</button>
+</div>
+<!-- File List Table -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded overflow-hidden shadow-sm">
+<div class="px-lg py-md border-b border-outline-variant flex justify-between items-center bg-surface-container-low">
+<span class="font-label-md text-label-md text-primary uppercase tracking-wide">文件队列</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">已选择 3 个文件</span>
+</div>
+<div class="divide-y divide-outline-variant custom-scrollbar max-h-[400px] overflow-y-auto">
+<!-- File Item 1 -->
+<div class="px-lg py-md flex items-center justify-between hover:bg-surface-bright transition-colors group">
+<div class="flex items-center gap-md">
+<div class="w-10 h-10 rounded bg-red-50 flex items-center justify-center text-red-600">
+<span class="material-symbols-outlined" data-icon="description">description</span>
+</div>
+<div>
+<p class="font-label-md text-label-md text-on-surface">MSA_Corp_Services_v2.pdf</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">1.4 MB • 已完成</p>
+</div>
+</div>
+<div class="flex items-center gap-xl">
+<div class="flex items-center gap-xs text-green-600">
+<span class="material-symbols-outlined text-[18px]" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="font-label-sm text-label-sm">就绪</span>
+</div>
+<button class="text-outline hover:text-error opacity-0 group-hover:opacity-100 transition-all">
+<span class="material-symbols-outlined" data-icon="delete">delete</span>
+</button>
+</div>
+</div>
+<!-- File Item 2 -->
+<div class="px-lg py-md flex items-center justify-between hover:bg-surface-bright transition-colors group">
+<div class="flex items-center gap-md">
+<div class="w-10 h-10 rounded bg-blue-50 flex items-center justify-center text-blue-600">
+<span class="material-symbols-outlined" data-icon="article">article</span>
+</div>
+<div>
+<p class="font-label-md text-label-md text-on-surface">NDA_Standard_Final.docx</p>
+<div class="flex items-center gap-md mt-base">
+<div class="w-32 h-1.5 bg-surface-container-high rounded-full overflow-hidden">
+<div class="h-full bg-secondary w-2/3"></div>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface-variant">64%</span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-xl">
+<button class="text-outline hover:text-error opacity-0 group-hover:opacity-100 transition-all">
+<span class="material-symbols-outlined" data-icon="close">close</span>
+</button>
+</div>
+</div>
+<!-- File Item 3 -->
+<div class="px-lg py-md flex items-center justify-between hover:bg-surface-bright transition-colors group">
+<div class="flex items-center gap-md">
+<div class="w-10 h-10 rounded bg-red-50 flex items-center justify-center text-red-600">
+<span class="material-symbols-outlined" data-icon="description">description</span>
+</div>
+<div>
+<p class="font-label-md text-label-md text-on-surface">Lease_Agreement_Annex_A.pdf</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">4.2 MB • 等待中</p>
+</div>
+</div>
+<div class="flex items-center gap-xl">
+<div class="flex items-center gap-xs text-on-surface-variant">
+<span class="material-symbols-outlined text-[18px] animate-spin" data-icon="sync">sync</span>
+<span class="font-label-sm text-label-sm">排队中</span>
+</div>
+<button class="text-outline hover:text-error opacity-0 group-hover:opacity-100 transition-all">
+<span class="material-symbols-outlined" data-icon="delete">delete</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Side Configuration & Stats Column -->
+<aside class="col-span-12 lg:col-span-3 space-y-lg">
+<div class="bg-surface-container-lowest border border-outline-variant rounded p-lg shadow-sm">
+<h4 class="font-label-md text-label-md text-primary mb-md uppercase tracking-wider">批次属性</h4>
+<div class="space-y-md">
+<div>
+<label class="block font-label-sm text-label-sm text-on-surface-variant mb-xs">批次名称</label>
+<input class="w-full px-md py-sm bg-surface-bright border border-outline-variant rounded focus:ring-2 focus:ring-secondary/20 focus:border-secondary outline-none transition-all" placeholder="Q3 Legal Review - EMEA" type="text"/>
+</div>
+<div>
+<label class="block font-label-sm text-label-sm text-on-surface-variant mb-xs">文档类型</label>
+<select class="w-full px-md py-sm bg-surface-bright border border-outline-variant rounded focus:ring-2 focus:ring-secondary/20 focus:border-secondary outline-none transition-all">
+<option>商业合同</option>
+<option>NDAs / 保密协议</option>
+<option>雇用协议</option>
+<option>知识产权转让</option>
+</select>
+</div>
+<div class="pt-md border-t border-outline-variant">
+<div class="flex items-center justify-between mb-sm">
+<span class="font-body-sm text-body-sm text-on-surface">OCR 增强</span>
+<div class="w-10 h-5 bg-secondary rounded-full relative cursor-pointer" id="ocr-toggle">
+<div class="absolute right-0.5 top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-all duration-200"></div>
+</div>
+</div>
+<p class="font-label-sm text-label-sm text-on-surface-variant leading-tight">针对扫描文档或低质量图像的高级文本识别。</p>
+</div>
+</div>
+</div>
+<!-- Usage Stats / Quota -->
+<div class="bg-surface-container-low border border-outline-variant rounded p-lg shadow-sm">
+<h4 class="font-label-md text-label-md text-primary mb-md uppercase tracking-wider">使用额度</h4>
+<div class="space-y-sm">
+<div class="flex justify-between font-label-sm text-label-sm">
+<span class="text-on-surface-variant">每月页数</span>
+<span class="text-on-surface font-semibold">1,240 / 5,000</span>
+</div>
+<div class="w-full h-2 bg-surface-container-high rounded-full overflow-hidden">
+<div class="h-full bg-primary w-1/4"></div>
+</div>
+<p class="font-label-sm text-label-sm text-on-surface-variant text-center mt-md">企业方案：无限批次</p>
+</div>
+</div>
+<!-- AI Insight (formerly in side nav) -->
+<div class="bg-primary-container p-lg rounded text-white">
+<div class="flex items-center gap-sm mb-sm text-secondary-fixed">
+<span class="material-symbols-outlined text-[20px]" data-icon="auto_awesome" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+<span class="font-label-sm text-label-sm uppercase tracking-wider">AI 洞察</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-primary-container leading-relaxed">
+                    批量处理相似法律结构的多个文件（如 NDA 或主服务协议）可将提取准确度提高 24%。
+                </p>
+</div>
+</aside>
+<!-- Global Actions -->
+<div class="col-span-12 flex items-center justify-between pt-lg border-t border-outline-variant">
+<button class="flex items-center gap-sm text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined" data-icon="arrow_back">arrow_back</span>
+<span class="font-label-md text-label-md">返回控制台</span>
+</button>
+<div class="flex items-center gap-lg">
+<p class="hidden md:block font-body-sm text-body-sm text-on-surface-variant">所有上传均已加密并在本地处理。</p>
+<button class="flex items-center gap-md px-2xl py-md bg-primary text-white rounded font-label-md text-label-md hover:opacity-90 transition-all shadow-md active:scale-[0.98]">
+                    下一步：选择范本
+                    <span class="material-symbols-outlined" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+</div>
+</main>
+<script>
+        // Micro-interaction for Drag and Drop
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => {
+                dropZone.classList.add('drop-zone-active');
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => {
+                dropZone.classList.remove('drop-zone-active');
+            }, false);
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFiles(files);
+        });
+
+        function handleFiles(files) {
+            console.log('Files dropped:', files);
+        }
+
+        // Toggle interaction for OCR Enhancement
+        const toggle = document.getElementById('ocr-toggle');
+        toggle.addEventListener('click', () => {
+            toggle.classList.toggle('bg-secondary');
+            toggle.classList.toggle('bg-surface-container-highest');
+            const knob = toggle.querySelector('div');
+            knob.classList.toggle('right-0.5');
+            knob.classList.toggle('left-0.5');
+        });
+    </script>
+</body></html>

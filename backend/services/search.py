@@ -34,7 +34,7 @@ from core.config import (
     ROUTE_SYSTEM_PROMPT,
     TABLE_CONTEXT_MAX_CHARS,
 )
-from core.table_utils import (
+from services.utils import (
     looks_like_html_table,
     looks_like_markdown_table,
     normalize_table_fields,

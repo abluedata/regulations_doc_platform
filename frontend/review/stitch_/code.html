@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+
+<html class="light" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>DocReview AI - 主审查控制台</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "tertiary": "#000000",
+                    "surface-dim": "#cbdbf5",
+                    "secondary-fixed": "#dbe1ff",
+                    "surface-container-low": "#eff4ff",
+                    "surface-container-lowest": "#ffffff",
+                    "on-error": "#ffffff",
+                    "primary-container": "#131b2e",
+                    "inverse-on-surface": "#eaf1ff",
+                    "outline": "#76777d",
+                    "on-surface-variant": "#45464d",
+                    "inverse-surface": "#213145",
+                    "on-primary-fixed": "#131b2e",
+                    "background": "#f8f9ff",
+                    "surface": "#f8f9ff",
+                    "on-secondary": "#ffffff",
+                    "secondary-container": "#316bf3",
+                    "surface-container-high": "#dce9ff",
+                    "surface-container": "#e5eeff",
+                    "tertiary-container": "#191c1e",
+                    "inverse-primary": "#bec6e0",
+                    "surface-container-highest": "#d3e4fe",
+                    "on-primary": "#ffffff",
+                    "on-secondary-container": "#fefcff",
+                    "primary-fixed": "#dae2fd",
+                    "primary-fixed-dim": "#bec6e0",
+                    "on-primary-fixed-variant": "#3f465c",
+                    "error": "#ba1a1a",
+                    "primary": "#000000",
+                    "tertiary-fixed": "#e0e3e5",
+                    "on-tertiary-fixed": "#191c1e",
+                    "error-container": "#ffdad6",
+                    "outline-variant": "#c6c6cd",
+                    "tertiary-fixed-dim": "#c4c7c9",
+                    "on-surface": "#0b1c30",
+                    "on-secondary-fixed": "#00174b",
+                    "secondary": "#0051d5",
+                    "on-tertiary": "#ffffff",
+                    "secondary-fixed-dim": "#b4c5ff",
+                    "on-secondary-fixed-variant": "#003ea8",
+                    "surface-bright": "#f8f9ff",
+                    "on-error-container": "#93000a",
+                    "surface-variant": "#d3e4fe"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "md": "16px",
+                    "3xl": "64px",
+                    "2xl": "48px",
+                    "sm": "8px",
+                    "base": "4px",
+                    "gutter": "24px",
+                    "lg": "24px",
+                    "xs": "4px",
+                    "container-max": "1440px",
+                    "xl": "32px"
+            },
+            "fontFamily": {
+                    "display-lg": ["Inter"],
+                    "headline-sm": ["Inter"],
+                    "headline-lg-mobile": ["Inter"],
+                    "label-md": ["Inter"],
+                    "body-sm": ["Inter"],
+                    "body-md": ["Inter"],
+                    "label-sm": ["Inter"],
+                    "headline-md": ["Inter"],
+                    "body-lg": ["Inter"],
+                    "headline-lg": ["Inter"]
+            },
+            "fontSize": {
+                    "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "headline-lg-mobile": ["28px", {"lineHeight": "36px", "fontWeight": "600"}],
+                    "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "500"}],
+                    "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "label-sm": ["12px", {"lineHeight": "16px", "fontWeight": "600"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8f9ff; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .contract-page { box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .active-insight { border-left: 4px solid #0051d5; background: #eff4ff; }
+    </style>
+</head>
+<body class="bg-background text-on-surface overflow-hidden h-screen flex flex-col">
+<!-- TopNavBar -->
+<header class="bg-surface border-b border-outline-variant h-16 flex justify-between items-center w-full px-lg fixed top-0 z-50">
+<div class="flex items-center gap-xl">
+<span class="font-headline-md text-headline-md font-bold text-primary">DocReview AI</span>
+<nav class="hidden md:flex items-center gap-lg h-full pt-4">
+<a class="text-secondary border-b-2 border-secondary pb-4 font-body-md text-body-md hover:text-primary transition-colors" href="#">控制台</a>
+<a class="text-on-surface-variant pb-4 font-body-md text-body-md hover:text-primary transition-colors" href="#">模板库</a>
+<a class="text-on-surface-variant pb-4 font-body-md text-body-md hover:text-primary transition-colors" href="#">归档</a>
+<a class="text-on-surface-variant pb-4 font-body-md text-body-md hover:text-primary transition-colors" href="#">设置</a>
+</nav>
+</div>
+<div class="flex items-center gap-md">
+<button class="p-base text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="p-base text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">help</span>
+</button>
+<div class="w-8 h-8 rounded-full overflow-hidden bg-surface-container-high border border-outline-variant">
+<img class="w-full h-full object-cover" data-alt="A professional headshot of a corporate legal executive, high-resolution photography with soft studio lighting. The background is a blurred modern office environment with neutral tones. The subject is wearing a tailored charcoal suit, conveying authority and professional trust. Minimalist and clean aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCRwj4Y6kleDY5W_61eogYDg-Sa5s5RbEJZxaHWQkPHC_ps6yyG74gGcgWVk4KlV2OAl0ujBFD8GMg6oGPVvngQGAR-Y-sDH36qfTzkq0v4mUc1CwwzguPw1IFXNG7AO8raHiA9WpnEW78zuqXkqqrIzr6ItbqYDX7kAVXC1Xld3UU5srN6baNy5je1UjlKbw6mWk3d00UxkTbq-Jzr6KuMPwwj2RAkv5SCzSm3apF8lnQXK4L0dsH6sPLUAV-fP_s81WdGdkjwrig"/>
+</div>
+</div>
+</header>
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-16 h-[calc(100vh-64px)] w-64 bg-surface-container-low border-r border-outline-variant hidden xl:flex flex-col pt-md pb-md">
+<div class="px-md mb-xl">
+<div class="flex items-center gap-sm mb-base">
+<div class="w-8 h-8 bg-primary rounded flex items-center justify-center text-on-primary">
+<span class="material-symbols-outlined text-sm">balance</span>
+</div>
+<span class="font-headline-sm text-headline-sm font-semibold text-on-surface">法律运营</span>
+</div>
+<span class="font-label-md text-label-md text-on-surface-variant px-sm opacity-70">企业版</span>
+</div>
+<nav class="flex-1 flex flex-col gap-xs">
+<button class="flex items-center gap-md bg-surface-container-high text-secondary border-l-4 border-secondary px-md py-sm font-label-md text-label-md transition-all">
+<span class="material-symbols-outlined">folder_open</span>
+<span>当前批次</span>
+</button>
+<button class="flex items-center gap-md text-on-surface-variant hover:bg-surface-container px-md py-sm font-label-md text-label-md transition-all">
+<span class="material-symbols-outlined">history</span>
+<span>最近文档</span>
+</button>
+<button class="flex items-center gap-md text-on-surface-variant hover:bg-surface-container px-md py-sm font-label-md text-label-md transition-all">
+<span class="material-symbols-outlined">grade</span>
+<span>收藏条款</span>
+</button>
+<button class="flex items-center gap-md text-on-surface-variant hover:bg-surface-container px-md py-sm font-label-md text-label-md transition-all">
+<span class="material-symbols-outlined">assignment_turned_in</span>
+<span>审计日志</span>
+</button>
+</nav>
+<div class="px-md mt-auto pt-md border-t border-outline-variant flex flex-col gap-xs">
+<button class="flex items-center gap-md text-on-surface-variant hover:bg-surface-container px-md py-sm font-label-md text-label-md transition-all">
+<span class="material-symbols-outlined">account_circle</span>
+<span>账户</span>
+</button>
+<button class="flex items-center gap-md text-on-surface-variant hover:bg-surface-container px-md py-sm font-label-md text-label-md transition-all">
+<span class="material-symbols-outlined">logout</span>
+<span>退出登录</span>
+</button>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="flex-1 mt-16 xl:ml-64 flex overflow-hidden">
+<!-- Dual Pane Container -->
+<div class="flex w-full h-full">
+<!-- Left Pane: Document Previewer -->
+<section class="flex-1 bg-surface-container-lowest border-r border-outline-variant overflow-y-auto custom-scrollbar p-xl flex flex-col items-center">
+<div class="w-full max-w-4xl mb-lg flex justify-between items-center">
+<div>
+<h1 class="font-headline-md text-headline-md text-on-surface">服务级别协议_v4.pdf</h1>
+<p class="font-body-sm text-body-sm text-on-surface-variant">最后修改: 2023年10月24日 • 14 页</p>
+</div>
+<div class="flex gap-sm">
+<button class="p-sm hover:bg-surface-container rounded transition-colors"><span class="material-symbols-outlined">zoom_in</span></button>
+<button class="p-sm hover:bg-surface-container rounded transition-colors"><span class="material-symbols-outlined">zoom_out</span></button>
+<button class="p-sm hover:bg-surface-container rounded transition-colors"><span class="material-symbols-outlined">print</span></button>
+</div>
+</div>
+<!-- High Fidelity Document Content -->
+<div class="contract-page bg-white w-full max-w-4xl min-h-[1100px] p-2xl border border-outline-variant relative selection:bg-secondary/20">
+<div class="absolute top-0 right-0 p-md opacity-20">
+<span class="material-symbols-outlined text-4xl">gavel</span>
+</div>
+<h2 class="font-headline-sm text-headline-sm mb-xl text-center uppercase tracking-widest border-b border-outline-variant pb-md">MASTER SERVICE AGREEMENT</h2>
+<div class="space-y-md font-body-md text-body-md leading-relaxed text-on-surface-variant">
+<p><strong class="text-on-surface">1. DEFINITIONS.</strong> "Services" means the consulting and technical implementation services provided by Provider to Client as described in the applicable Statement of Work. "Deliverables" means all work product, reports, software, and other materials developed specifically for Client.</p>
+<p><strong class="text-on-surface">2. SCOPE OF SERVICES.</strong> Provider shall provide the Services and Deliverables set forth in each SOW. Each SOW shall be deemed a part of this Agreement. In the event of a conflict between this Agreement and an SOW, this Agreement shall prevail unless the SOW specifically states otherwise.</p>
+<div class="bg-error/5 border-l-4 border-error p-md my-xl relative group">
+<div class="absolute -right-4 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+<span class="bg-error text-white text-[10px] px-sm py-xs rounded-full">风险评分: 高</span>
+</div>
+<p><strong class="text-on-surface">3. LIMITATION OF LIABILITY.</strong> Notwithstanding any provision to the contrary, Provider’s total aggregate liability arising out of or related to this Agreement shall be limited to $5,000,000 USD. Client waives all claims for incidental, consequential, or punitive damages under any legal theory whatsoever.</p>
+</div>
+<p><strong class="text-on-surface">4. INTELLECTUAL PROPERTY.</strong> Client shall own all right, title and interest in and to the Deliverables upon full payment of the applicable fees. Provider retains all rights to its pre-existing materials, tools, and methodologies used in the performance of the Services.</p>
+<div class="bg-secondary/5 border-l-4 border-secondary p-md my-xl relative group">
+<p><strong class="text-on-surface">5. INDEMNIFICATION.</strong> Provider shall indemnify, defend and hold harmless Client from and against any third-party claims alleging that the Deliverables infringe any valid patent, copyright, or trade secret of such third party.</p>
+</div>
+<p><strong class="text-on-surface">6. TERM AND TERMINATION.</strong> This Agreement shall commence on the Effective Date and continue for a period of three (3) years unless terminated earlier as provided herein. Either party may terminate this Agreement for convenience upon ninety (90) days prior written notice.</p>
+</div>
+</div>
+</section>
+<!-- Right Pane: AI Review Results -->
+<section class="w-[420px] bg-surface flex flex-col h-full shadow-[-4px_0_12px_rgba(0,0,0,0.03)] z-10">
+<div class="p-lg border-b border-outline-variant">
+<div class="flex justify-between items-center mb-md">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">AI 审查分析</h2>
+<span class="bg-secondary/10 text-secondary px-sm py-xs rounded-full font-label-sm text-label-sm">BETA ENGINE 2.4</span>
+</div>
+<div class="flex gap-sm">
+<div class="flex-1 bg-surface-container-high rounded-lg p-sm border border-outline-variant">
+<p class="text-[10px] text-on-surface-variant font-bold uppercase mb-xs">发现问题</p>
+<p class="font-headline-md text-headline-md text-on-surface">12</p>
+</div>
+<div class="flex-1 bg-surface-container-high rounded-lg p-sm border border-outline-variant">
+<p class="text-[10px] text-on-surface-variant font-bold uppercase mb-xs">风险评分</p>
+<p class="font-headline-md text-headline-md text-error">中</p>
+</div>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto custom-scrollbar">
+<!-- Issue Categories -->
+<div class="p-lg space-y-md">
+<div class="flex items-center justify-between">
+<h3 class="font-label-md text-label-md text-on-surface-variant uppercase font-bold tracking-wider">核心风险</h3>
+<span class="text-on-surface-variant material-symbols-outlined text-sm">info</span>
+</div>
+<!-- Issue Card: High Risk -->
+<div class="active-insight p-md rounded-lg shadow-sm border border-outline-variant cursor-pointer transition-all hover:shadow-md">
+<div class="flex justify-between items-start mb-sm">
+<span class="bg-error text-white px-xs py-[2px] rounded font-label-sm text-label-sm">高风险</span>
+<span class="text-on-surface-variant font-label-sm">第 3.1 节</span>
+</div>
+<h4 class="font-label-md text-label-md font-bold text-on-surface mb-xs">无限制责任</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant line-clamp-2">该条款实际上取消了对间接损害的限制，使公司面临无限的潜在索赔风险。</p>
+<div class="mt-md pt-md border-t border-outline-variant flex flex-col gap-sm">
+<div class="bg-surface-container-lowest p-sm rounded text-[12px]">
+<p class="font-bold text-on-surface-variant mb-base">当前条款：</p>
+<p class="italic text-on-surface-variant">"...total aggregate liability... limited to $5,000,000 USD."</p>
+</div>
+<div class="bg-secondary/5 p-sm rounded text-[12px] border border-secondary/20">
+<p class="font-bold text-secondary mb-base">标准模板匹配：</p>
+<p class="italic text-on-surface-variant">"Liability shall be limited to 1x the annual contract value."</p>
+</div>
+</div>
+</div>
+<!-- Issue Card: Medium Risk -->
+<div class="p-md bg-white rounded-lg border border-outline-variant cursor-pointer transition-all hover:bg-surface-container">
+<div class="flex justify-between items-start mb-sm">
+<span class="bg-amber-500 text-white px-xs py-[2px] rounded font-label-sm text-label-sm">中风险</span>
+<span class="text-on-surface-variant font-label-sm">第 6.2 节</span>
+</div>
+<h4 class="font-label-md text-label-md font-bold text-on-surface mb-xs">非标准终止条款</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant">90天的通知期长于标准30天的公司政策。</p>
+</div>
+<!-- Issue Card: Low Risk -->
+<div class="p-md bg-white rounded-lg border border-outline-variant cursor-pointer transition-all hover:bg-surface-container">
+<div class="flex justify-between items-start mb-sm">
+<span class="bg-secondary text-white px-xs py-[2px] rounded font-label-sm text-label-sm">低风险</span>
+<span class="text-on-surface-variant font-label-sm">第 1.4 节</span>
+</div>
+<h4 class="font-label-md text-label-md font-bold text-on-surface mb-xs">定义模糊</h4>
+<p class="font-body-sm text-body-sm text-on-surface-variant">“交付物”的定义可以更加细化，以保护核心专有知识产权。</p>
+</div>
+</div>
+</div>
+<!-- Action Footer -->
+<div class="p-lg bg-surface-container-lowest border-t border-outline-variant flex flex-col gap-md">
+<div class="flex gap-sm">
+<button class="flex-1 py-sm bg-error/10 text-error border border-error/30 rounded font-label-md text-label-md hover:bg-error hover:text-white transition-all">拒绝更改</button>
+<button class="flex-1 py-sm bg-secondary text-white rounded font-label-md text-label-md hover:shadow-lg transition-all active:scale-[0.98]">批准草案</button>
+</div>
+<button class="w-full py-sm border border-outline-variant text-on-surface-variant rounded font-label-md text-label-md flex items-center justify-center gap-sm hover:bg-surface-container transition-all">
+<span class="material-symbols-outlined text-sm">ios_share</span>
+                    导出详细报告
+                </button>
+</div>
+</section>
+</div>
+</main>
+<!-- Floating UI Helper -->
+<button class="fixed bottom-lg right-lg bg-primary text-on-primary w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition-transform active:scale-95 group z-[100]">
+<span class="material-symbols-outlined">auto_awesome</span>
+<div class="absolute right-full mr-md bg-on-surface text-surface px-md py-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none font-label-md">
+        咨询 AI 助手
+    </div>
+</button>
+<script>
+        // Micro-interaction for clause highlighting
+        document.querySelectorAll('.active-insight').forEach(card => {
+            card.addEventListener('mouseenter', () => {
+                // Future expansion: highlight specific text in preview
+            });
+        });
+
+        // Simple tab switching logic for future use
+        const navLinks = document.querySelectorAll('nav a');
+        navLinks.forEach(link => {
+            link.addEventListener('click', (e) => {
+                navLinks.forEach(l => {
+                    l.classList.remove('text-secondary', 'border-b-2', 'border-secondary');
+                    l.classList.add('text-on-surface-variant');
+                });
+                link.classList.remove('text-on-surface-variant');
+                link.classList.add('text-secondary', 'border-b-2', 'border-secondary');
+            });
+        });
+    </script>
+</body></html>

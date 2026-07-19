@@ -2,7 +2,7 @@
 
 import unittest
 
-from core.table_utils import (
+from services.utils import (
     looks_like_html_table,
     looks_like_markdown_table,
     html_to_grid,

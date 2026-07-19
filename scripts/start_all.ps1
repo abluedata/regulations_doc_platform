@@ -238,9 +238,10 @@ if (-not (Wait-Http -Name "adapter" -Url $adapterUrl -Retries 30 -DelaySec 1)) {
     Write-Warn2 ("adapter not ready, see logs under " + $LogDir)
 }
 
-# 3) business API
+# 3) business API (cwd=backend, so api/services/core 顶层包可直接 import)
 $apiUrl = "http://127.0.0.1:$ApiPort/api/docs"
 $apiDocsUrl = "http://127.0.0.1:$ApiPort/docs"
+$BackendDir = Join-Path $Root "backend"
 if ((-not $Restart) -and ((Test-HttpOk -Url $apiUrl) -or (Test-HttpOk -Url $apiDocsUrl))) {
     Write-Ok ("business API already running :" + $ApiPort)
 } else {
@@ -250,7 +251,7 @@ if ((-not $Restart) -and ((Test-HttpOk -Url $apiUrl) -or (Test-HttpOk -Url $apiD
         "-m", "uvicorn", "api.main:app",
         "--host", "127.0.0.1",
         "--port", "$ApiPort"
-    ) -WorkingDirectory $Root -EnvMap $commonEnv
+    ) -WorkingDirectory $BackendDir -EnvMap $commonEnv
 }
 $apiOk = Wait-Http -Name "business-api" -Url $apiUrl -Retries 30 -DelaySec 1
 if (-not $apiOk) {

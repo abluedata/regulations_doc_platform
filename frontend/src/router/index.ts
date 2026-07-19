@@ -39,6 +39,30 @@ const router = createRouter({
       component: () => import('@/views/DocPreviewView.vue'),
       meta: { title: '文档预览' },
     },
+    {
+      path: '/review/upload',
+      name: 'review-upload',
+      component: () => import('@/views/review/ReviewUploadView.vue'),
+      meta: { title: '文档上传', reviewStep: 1 },
+    },
+    {
+      path: '/review/templates',
+      name: 'review-templates',
+      component: () => import('@/views/review/ReviewTemplatesView.vue'),
+      meta: { title: '范本选择', reviewStep: 2 },
+    },
+    {
+      path: '/review/rules',
+      name: 'review-rules',
+      component: () => import('@/views/review/ReviewRulesView.vue'),
+      meta: { title: '条款设置', reviewStep: 3 },
+    },
+    {
+      path: '/review/console',
+      name: 'review-console',
+      component: () => import('@/views/review/ReviewConsoleView.vue'),
+      meta: { title: '智能审查', reviewStep: 4 },
+    },
   ],
 })
 

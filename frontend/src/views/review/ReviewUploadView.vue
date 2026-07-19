@@ -49,6 +49,28 @@ function browseFiles() {
   fileInput.value?.click()
 }
 
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function addSelectedFiles(event: Event) {
+  const input = event.target as HTMLInputElement
+  const selectedFiles = Array.from(input.files ?? [])
+  selectedFiles.forEach((file, index) => {
+    if (review.files.some((item) => item.name === file.name)) return
+    review.files.push({
+      id: `local-${review.files.length + index}-${file.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+      name: file.name,
+      size: formatFileSize(file.size),
+      progress: 100,
+      status: 'ready',
+    })
+  })
+  input.value = ''
+}
+
 function removeFile(id: string) {
   const index = review.files.findIndex((file) => file.id === id)
   if (index >= 0) review.files.splice(index, 1)
@@ -87,7 +109,7 @@ async function goPrevious() {
           <strong>拖拽文件至此</strong>
           <span>支持多个 PDF 和 DOCX 文件。每个文件最大 50MB。</span>
           <span class="drop-zone__action">浏览文件</span>
-          <input ref="fileInput" type="file" multiple hidden accept=".pdf,.docx" />
+          <input ref="fileInput" type="file" multiple hidden accept=".pdf,.docx" @change="addSelectedFiles" />
         </button>
 
         <section class="file-queue" aria-labelledby="file-queue-title">

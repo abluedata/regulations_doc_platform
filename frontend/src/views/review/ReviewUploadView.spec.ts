@@ -50,4 +50,22 @@ describe('ReviewUploadView', () => {
     expect(store.files).toHaveLength(2)
     expect(store.files.some((file) => file.id === 'msa-services')).toBe(false)
   })
+
+  it('adds selected local files to the demo queue', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/review/upload', name: 'review-upload', component: ReviewUploadView }],
+    })
+    await router.push('/review/upload')
+    await router.isReady()
+
+    const wrapper = mount(ReviewUploadView, { global: { plugins: [router, ElementPlus] } })
+    const input = wrapper.get('input[type="file"]')
+    const selected = new File(['demo contract'], 'Supplier_Agreement.pdf', { type: 'application/pdf' })
+    Object.defineProperty(input.element, 'files', { configurable: true, value: [selected] })
+
+    await input.trigger('change')
+
+    expect(useReviewStore().files.some((file) => file.name === 'Supplier_Agreement.pdf')).toBe(true)
+  })
 })

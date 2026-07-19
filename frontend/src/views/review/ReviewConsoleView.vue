@@ -27,14 +27,18 @@ const riskActions = ref<Record<string, RiskAction>>({})
 const zoom = ref(100)
 let analysisTimer: ReturnType<typeof setTimeout> | null = null
 
+function scheduleAnalysisCompletion() {
+  if (analysisTimer || review.analysisStatus !== 'running') return
+  analysisTimer = setTimeout(() => {
+    review.completeAnalysis()
+    analysisTimer = null
+  }, 450)
+}
+
 onMounted(() => {
   review.goToStep(Number(route.meta.reviewStep) || 4)
-  if (review.analysisStatus === 'running') {
-    analysisTimer = setTimeout(() => {
-      review.completeAnalysis()
-      analysisTimer = null
-    }, 450)
-  }
+  if (review.analysisStatus === 'idle') review.startAnalysis()
+  scheduleAnalysisCompletion()
 })
 
 onBeforeUnmount(() => {

@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import ReviewConsoleView from './ReviewConsoleView.vue'
 import { useReviewStore } from '@/stores/review'
@@ -41,5 +41,25 @@ describe('ReviewConsoleView', () => {
     const wrapper = mount(ReviewConsoleView, { global: { plugins: [router, ElementPlus] } })
 
     expect(wrapper.get('[data-test="approve-draft"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('runs the local demo analysis when the console is opened directly', async () => {
+    vi.useFakeTimers()
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/review/console', name: 'review-console', component: ReviewConsoleView }],
+    })
+    await router.push('/review/console')
+    await router.isReady()
+
+    const store = useReviewStore()
+    const wrapper = mount(ReviewConsoleView, { global: { plugins: [router, ElementPlus] } })
+    expect(store.analysisStatus).toBe('running')
+
+    await vi.advanceTimersByTimeAsync(450)
+    expect(store.analysisStatus).toBe('complete')
+
+    wrapper.unmount()
+    vi.useRealTimers()
   })
 })

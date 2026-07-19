@@ -3,7 +3,7 @@ import { afterEach } from 'vitest'
 
 config.global.stubs = {
   teleport: true,
-  transition: false,
+  transition: true,
 }
 
 enableAutoUnmount(afterEach)

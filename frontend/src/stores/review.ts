@@ -137,10 +137,12 @@ export const useReviewStore = defineStore('review', () => {
   }
 
   function goToStep(step: number) {
-    currentStep.value = Math.min(4, Math.max(1, step))
+    if (!Number.isFinite(step)) return
+    currentStep.value = Math.min(4, Math.max(1, Math.round(step)))
   }
 
   function selectTemplate(id: string) {
+    if (!templates.value.some((item) => item.id === id)) return
     selectedTemplateId.value = id
   }
 
@@ -151,19 +153,24 @@ export const useReviewStore = defineStore('review', () => {
   }
 
   function setSensitivity(value: number) {
+    if (!Number.isFinite(value)) return
     sensitivity.value = Math.min(100, Math.max(0, Math.round(value)))
   }
 
+  function startAnalysis() {
+    if (analysisStatus.value !== 'running') analysisStatus.value = 'running'
+  }
+
   function completeAnalysis() {
-    analysisStatus.value = 'complete'
+    if (analysisStatus.value === 'running') analysisStatus.value = 'complete'
   }
 
   function approveDraft() {
-    analysisStatus.value = 'approved'
+    if (analysisStatus.value === 'complete') analysisStatus.value = 'approved'
   }
 
   function rejectChanges() {
-    analysisStatus.value = 'rejected'
+    if (analysisStatus.value === 'complete') analysisStatus.value = 'rejected'
   }
 
   return {
@@ -181,6 +188,7 @@ export const useReviewStore = defineStore('review', () => {
     selectTemplate,
     toggleClause,
     setSensitivity,
+    startAnalysis,
     completeAnalysis,
     approveDraft,
     rejectChanges,

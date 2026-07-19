@@ -25,6 +25,10 @@ describe('review store', () => {
     expect(store.currentStep).toBe(4)
     store.goToStep(-2)
     expect(store.currentStep).toBe(1)
+    store.goToStep(2.5)
+    expect(store.currentStep).toBe(3)
+    store.goToStep(Number.NaN)
+    expect(store.currentStep).toBe(3)
   })
 
   it('updates template, clauses, tuning and approval state locally', () => {
@@ -33,6 +37,7 @@ describe('review store', () => {
     store.selectTemplate('services')
     store.toggleClause('payment-terms')
     store.setSensitivity(72)
+    store.startAnalysis()
     store.completeAnalysis()
     store.approveDraft()
 
@@ -47,6 +52,8 @@ describe('review store', () => {
     const enabledCount = store.clauses.filter((item) => item.enabled).length
 
     store.toggleClause('missing-clause')
+    store.startAnalysis()
+    store.completeAnalysis()
     store.rejectChanges()
 
     expect(store.clauses.filter((item) => item.enabled)).toHaveLength(enabledCount)
@@ -61,6 +68,11 @@ describe('review store', () => {
 
     store.setSensitivity(105)
     expect(store.sensitivity).toBe(100)
+
+    store.setSensitivity(72.5)
+    expect(store.sensitivity).toBe(73)
+    store.setSensitivity(Number.NaN)
+    expect(store.sensitivity).toBe(73)
   })
 
   it('does not toggle disabled clauses', () => {
@@ -71,5 +83,49 @@ describe('review store', () => {
     expect(clause?.enabled).toBe(false)
     store.toggleClause('non-compete')
     expect(clause?.enabled).toBe(false)
+  })
+
+  it('ignores templates that are not in the demo collection', () => {
+    const store = useReviewStore()
+
+    store.selectTemplate('unknown-template')
+
+    expect(store.selectedTemplateId).toBe('mutual-nda')
+  })
+
+  it('keeps approval actions inert outside the complete state', () => {
+    const store = useReviewStore()
+
+    store.completeAnalysis()
+    store.approveDraft()
+    store.rejectChanges()
+
+    expect(store.analysisStatus).toBe('idle')
+  })
+
+  it('runs the analysis lifecycle before approving a draft', () => {
+    const store = useReviewStore()
+
+    store.startAnalysis()
+    expect(store.analysisStatus).toBe('running')
+    store.completeAnalysis()
+    expect(store.analysisStatus).toBe('complete')
+    store.approveDraft()
+
+    expect(store.analysisStatus).toBe('approved')
+  })
+
+  it('can restart analysis from complete and rejected states', () => {
+    const store = useReviewStore()
+
+    store.startAnalysis()
+    store.completeAnalysis()
+    store.startAnalysis()
+    expect(store.analysisStatus).toBe('running')
+    store.completeAnalysis()
+    store.rejectChanges()
+    store.startAnalysis()
+
+    expect(store.analysisStatus).toBe('running')
   })
 })

@@ -14,14 +14,14 @@
 用户 (Vue3 :5173)
         │  /api  proxy
         ▼
-FastAPI (api/ :8002)
+FastAPI (backend/api/ :8002, cwd=backend)
         │
         ├── services/qa_service      流式问答
         ├── services/search          BM25 + Vector + RRF + Route
         ├── services/parallel_qa     大上下文并行问答
         ├── services/chat_manager    历史 / 收藏 (.chat_data/)
         ├── services/document_*      上传、解析、分块、入库
-        └── core/                    配置 + 表格工具
+        └── core/                    配置
                 │
                 ├── Elasticsearch
                 ├── Embedding API
@@ -158,6 +158,8 @@ cp .env.example .env
 
 ```bash
 # 将 .txt / .pdf 放入 docs/
+# cwd=backend，使 api/services/core 顶层包可 import
+cd backend
 python -m services.indexer
 ```
 
@@ -172,8 +174,6 @@ python -m services.indexer
 
 ```powershell
 .\start.ps1
-# 等价
-powershell -ExecutionPolicy Bypass -File scripts\start_all.ps1
 
 # 常用参数
 .\start.ps1 -Restart          # 释放端口后重启
@@ -181,25 +181,61 @@ powershell -ExecutionPolicy Bypass -File scripts\start_all.ps1
 .\start.ps1 -OpenBrowser      # 启动后打开浏览器
 ```
 
+**macOS / Linux 一键启动：**
+
+```bash
+./start.sh
+
+# 常用参数
+./start.sh --restart
+./start.sh --skip-frontend
+./start.sh --skip-mineru      # 跳过 MinerU（仅 ES + API + 前端）
+./start.sh --open-browser
+```
+
 一键脚本会拉起：
 
 | 服务 | 默认端口 |
 |---|---|
+| Elasticsearch (Docker) | 9200 |
 | mineru-api | 8001 |
 | MinerU adapter | 8003 |
 | 业务 API (`api.main`) | **8002** |
 | 前端 Vite | 5173 |
 
+> 脚本会先自动启动 / 检查 Docker 中的 `es-local` 容器（不存在则创建），无需手动 `docker run`。
+
 停止：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\stop_all.ps1
+# Windows
+.\stop.ps1
+.\stop.ps1 -WithEs            # 同时停止 Docker 中的 ES 容器
+```
+
+```bash
+# macOS / Linux
+./stop.sh
+./stop.sh --with-es           # 同时停止 Docker 中的 ES 容器
+```
+
+**单独启动 Elasticsearch（Docker 未开时脚本会提示先开 Docker）：**
+
+```powershell
+# Windows
+powershell -ExecutionPolicy Bypass -File scripts\start_es.ps1
+```
+
+```bash
+# macOS / Linux
+bash scripts/start_es.sh
 ```
 
 **手动启动（需与前端代理一致）：**
 
 ```bash
-# 业务 API（默认与 vite proxy 对齐 8002）
+# 业务 API（默认与 vite proxy 对齐 8002）—— 注意 cwd=backend
+cd backend
 uvicorn api.main:app --reload --host 127.0.0.1 --port 8002
 
 # 前端
@@ -217,46 +253,57 @@ npm run dev
 
 开发时 Vite 将 `/api` 代理到 `http://127.0.0.1:8002`。
 
-若索引不存在，先执行 `python -m services.indexer` 或通过前端上传入库。
+若索引不存在，先执行（cwd=backend）`python -m services.indexer` 或通过前端上传入库。
 
 ### 6. 运行测试
 
+```powershell
+# Windows（cwd = backend，使 api/services/core 顶层包可 import）
+cd backend
+..\venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
 ```bash
-# 在项目根目录
-.\venv\Scripts\python.exe -m unittest discover -s tests -v
+# macOS / Linux
+cd backend
+../venv/bin/python -m unittest discover -s tests -v
 ```
 
 ## 项目结构
 
 ```
 regulations_doc_platform/
-├── api/                      # HTTP 层（FastAPI）
-│   ├── main.py               # 应用入口：uvicorn api.main:app
-│   ├── schemas.py
-│   └── routes/               # chat / history / favorites / docs
-├── core/                     # 配置与纯工具
-│   ├── config.py             # .env + 常量（_ROOT = 项目根）
-│   └── table_utils.py        # 表格 HTML/Markdown 规范化
-├── services/                 # 业务服务
-│   ├── qa_service.py         # 流式问答
-│   ├── parallel_qa.py        # 大上下文并行问答
-│   ├── search.py             # 混合检索 + 路由
-│   ├── chat_manager.py       # 历史 / 收藏
-│   ├── document_pipeline.py  # 解析 → 分块 → 入库
-│   ├── document_store.py     # 上传元数据与 IR 本地存储
-│   ├── chunk_strategy.py     # 文本分块
-│   └── indexer.py            # 离线索引：python -m services.indexer
+├── backend/                  # 后端（FastAPI + 业务）
+│   ├── api/                  # HTTP 层
+│   │   ├── main.py           # 应用入口：uvicorn api.main:app（cwd=backend）
+│   │   ├── schemas.py
+│   │   └── routes/           # chat / history / favorites / docs
+│   ├── core/                 # 配置
+│   │   └── config.py         # .env + 常量（_ROOT = 项目根）
+│   ├── services/             # 业务服务 + 工具
+│   │   ├── qa_service.py     # 流式问答
+│   │   ├── parallel_qa.py    # 大上下文并行问答
+│   │   ├── search.py         # 混合检索 + 路由
+│   │   ├── chat_manager.py   # 历史 / 收藏
+│   │   ├── document_pipeline.py  # 解析 → 分块 → 入库
+│   │   ├── document_store.py # 上传元数据与 IR 本地存储
+│   │   ├── chunk_strategy.py # 文本分块
+│   │   ├── utils.py          # 表格 HTML/Markdown 规范化
+│   │   └── indexer.py        # 离线索引：python -m services.indexer
+│   └── tests/                # unittest
 ├── mineru_service/           # MinerU 适配服务（独立进程）
 ├── frontend/                 # Vue3 + Vite + Element Plus
-├── scripts/                  # start_all / stop_all / 验证脚本
-├── tests/                    # unittest
-├── docs/                     # 示例文档 / 规格与计划
+├── scripts/                  # start_es / 验证脚本（.ps1 + .sh 双平台）
+├── docs/                     # 示例文档 / design/ 设计文档
 ├── .data/                    # 运行时数据（上传、日志；gitignore）
 ├── .chat_data/               # 历史与收藏（gitignore）
 ├── .env.example
 ├── requirements.txt
-├── start.ps1                 # 根目录一键启动入口
-└── start.bat
+├── start.ps1                 # 根目录一键启动入口（Windows）
+├── start.sh                  # 根目录一键启动入口（macOS / Linux）
+├── start.bat                 # 双击启动（调用 start.ps1）
+├── stop.ps1                  # 根目录一键停止入口（Windows）
+└── stop.sh                   # 根目录一键停止入口（macOS / Linux）
 ```
 
 ## API 密钥

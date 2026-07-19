@@ -77,4 +77,21 @@ describe('ReviewConsoleView', () => {
     expect(wrapper.find('.reader-panel').exists()).toBe(true)
     expect(wrapper.find('.findings-panel').exists()).toBe(true)
   })
+
+  it('switches the analysis panel to the question assistant tab', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/review/console', name: 'review-console', component: ReviewConsoleView }],
+    })
+    await router.push('/review/console')
+    await router.isReady()
+
+    const wrapper = mount(ReviewConsoleView, { global: { plugins: [router, ElementPlus] } })
+    expect(wrapper.find('.review-assistant').exists()).toBe(false)
+
+    await wrapper.get('[data-test="assistant-tab"]').trigger('click')
+
+    expect(wrapper.find('.review-assistant').exists()).toBe(true)
+    expect(wrapper.find('.findings-content').exists()).toBe(false)
+  })
 })

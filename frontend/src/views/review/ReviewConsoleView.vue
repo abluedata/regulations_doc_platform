@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   Download,
@@ -9,6 +9,7 @@ import {
   ZoomOut,
 } from '@element-plus/icons-vue'
 import RiskCard, { type RiskAction } from '@/components/review/RiskCard.vue'
+import ReviewAssistant from '@/components/review/ReviewAssistant.vue'
 import ReviewFooter from '@/components/review/ReviewFooter.vue'
 import ReviewStepper from '@/components/review/ReviewStepper.vue'
 import { useReviewStore } from '@/stores/review'
@@ -19,6 +20,8 @@ const route = useRoute()
 const selectedRiskId = ref('unlimited-liability')
 const riskActions = ref<Record<string, RiskAction>>({})
 const zoom = ref(100)
+const activeAnalysisTab = ref<'findings' | 'assistant'>('findings')
+const selectedRisk = computed(() => review.risks.find((risk) => risk.id === selectedRiskId.value))
 let analysisTimer: ReturnType<typeof setTimeout> | null = null
 
 function scheduleAnalysisCompletion() {
@@ -126,37 +129,71 @@ async function goPrevious() {
           <div><h2>AI 审查分析</h2><span class="demo-badge">演示分析</span></div>
           <span class="engine-badge">BETA ENGINE 2.4</span>
         </div>
-        <div class="metrics-grid">
-          <div><span>发现问题</span><strong>12</strong></div>
-          <div><span>风险评分</span><strong class="risk-score">中</strong></div>
+        <div class="analysis-tabs" role="tablist" aria-label="审查分析视图">
+          <button
+            id="findings-tab"
+            type="button"
+            role="tab"
+            data-test="findings-tab"
+            :aria-selected="activeAnalysisTab === 'findings'"
+            aria-controls="findings-panel-content"
+            :class="{ 'analysis-tab--active': activeAnalysisTab === 'findings' }"
+            @click="activeAnalysisTab = 'findings'"
+          >审查发现</button>
+          <button
+            id="assistant-tab"
+            type="button"
+            role="tab"
+            data-test="assistant-tab"
+            :aria-selected="activeAnalysisTab === 'assistant'"
+            aria-controls="assistant-panel-content"
+            :class="{ 'analysis-tab--active': activeAnalysisTab === 'assistant' }"
+            @click="activeAnalysisTab = 'assistant'"
+          >问答助手</button>
         </div>
-        <div class="findings-section">
-          <div class="findings-section__title"><h3>核心风险</h3><span>点击查看条款</span></div>
-          <div class="risk-list">
-            <RiskCard
-              v-for="risk in review.risks"
-              :key="risk.id"
-              :risk="risk"
-              :action="riskActions[risk.id] ?? 'pending'"
-              @select="selectRisk"
-            />
+
+        <div
+          v-if="activeAnalysisTab === 'findings'"
+          id="findings-panel-content"
+          class="findings-content"
+          role="tabpanel"
+          aria-labelledby="findings-tab"
+        >
+          <div class="metrics-grid">
+            <div><span>发现问题</span><strong>12</strong></div>
+            <div><span>风险评分</span><strong class="risk-score">中</strong></div>
+          </div>
+          <div class="findings-section">
+            <div class="findings-section__title"><h3>核心风险</h3><span>点击查看条款</span></div>
+            <div class="risk-list">
+              <RiskCard
+                v-for="risk in review.risks"
+                :key="risk.id"
+                :risk="risk"
+                :action="riskActions[risk.id] ?? 'pending'"
+                @select="selectRisk"
+              />
+            </div>
+          </div>
+          <div v-if="selectedRiskId" class="selected-risk-note">
+            已定位到 {{ selectedRisk?.section }}，正文中的高亮段落与此发现对应。
+          </div>
+          <div class="console-actions">
+            <el-button type="danger" plain :disabled="review.analysisStatus !== 'complete'" @click="rejectChanges">拒绝更改</el-button>
+            <el-button
+              data-test="approve-draft"
+              type="primary"
+              :disabled="review.analysisStatus !== 'complete'"
+              @click="approveDraft"
+            >批准草案</el-button>
+            <el-button plain @click="exportReport">
+              <el-icon aria-hidden="true"><Download /></el-icon>
+              导出详细报告
+            </el-button>
           </div>
         </div>
-        <div class="selected-risk-note" v-if="selectedRiskId">
-          已定位到 {{ review.risks.find((risk) => risk.id === selectedRiskId)?.section }}，正文中的高亮段落与此发现对应。
-        </div>
-        <div class="console-actions">
-          <el-button type="danger" plain :disabled="review.analysisStatus !== 'complete'" @click="rejectChanges">拒绝更改</el-button>
-          <el-button
-            data-test="approve-draft"
-            type="primary"
-            :disabled="review.analysisStatus !== 'complete'"
-            @click="approveDraft"
-          >批准草案</el-button>
-          <el-button plain @click="exportReport">
-            <el-icon aria-hidden="true"><Download /></el-icon>
-            导出详细报告
-          </el-button>
+        <div v-else id="assistant-panel-content" role="tabpanel" aria-labelledby="assistant-tab">
+          <ReviewAssistant :risk="selectedRisk" />
         </div>
       </aside>
     </div>
@@ -357,6 +394,41 @@ async function goPrevious() {
   flex-direction: column;
   border-left: 1px solid var(--outline-soft);
   background: var(--surface);
+}
+
+.analysis-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 0 20px;
+  border-bottom: 1px solid var(--outline-soft);
+}
+
+.analysis-tabs button {
+  min-height: 42px;
+  padding: 0 8px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--ink-muted);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.analysis-tabs button:hover,
+.analysis-tabs .analysis-tab--active {
+  color: var(--action);
+}
+
+.analysis-tabs .analysis-tab--active {
+  border-bottom-color: var(--action);
+}
+
+.findings-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
 }
 
 .findings-heading {

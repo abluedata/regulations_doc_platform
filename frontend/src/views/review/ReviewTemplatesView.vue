@@ -187,7 +187,7 @@ async function goPrevious() {
 }
 
 .category-chip {
-  min-height: 38px;
+  min-height: var(--control-height);
   padding: 8px 16px;
   border: 0;
   border-radius: 999px;
@@ -205,7 +205,7 @@ async function goPrevious() {
 .template-search {
   display: flex;
   width: min(100%, 300px);
-  min-height: 42px;
+  min-height: var(--control-height);
   align-items: center;
   gap: 8px;
   padding: 0 12px;

@@ -41,7 +41,7 @@ from api.routes import chat, docs, favorites, history
 from api.schemas import HealthResponse
 
 app = FastAPI(
-    title="保险智答 API",
+    title="审核智规 API",
     description="Vue3 前端配套 REST / SSE 接口",
     version="1.0.0",
 )

@@ -172,8 +172,9 @@ function clearMessages() {
 
 .assistant-clear {
   display: grid;
-  width: 30px;
-  height: 30px;
+  width: var(--control-height);
+  height: var(--control-height);
+  flex: 0 0 var(--control-height);
   place-items: center;
   padding: 0;
   border: 0;
@@ -240,13 +241,13 @@ function clearMessages() {
 }
 
 .assistant-suggestions button {
-  min-height: 28px;
-  padding: 4px 8px;
+  min-height: var(--control-height);
+  padding: 6px 10px;
   border: 1px solid var(--outline-soft);
   border-radius: var(--radius-sm);
   color: var(--action);
   background: var(--surface);
-  font-size: 10px;
+  font-size: 11px;
   cursor: pointer;
 }
 
@@ -295,9 +296,9 @@ function clearMessages() {
 
 .assistant-input-row button {
   display: grid;
-  width: 38px;
-  height: 38px;
-  flex: 0 0 38px;
+  width: var(--control-height);
+  height: var(--control-height);
+  flex: 0 0 var(--control-height);
   place-items: center;
   padding: 0;
   border: 0;

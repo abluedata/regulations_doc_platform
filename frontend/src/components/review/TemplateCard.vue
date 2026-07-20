@@ -84,14 +84,13 @@ function templateIcon() {
   cursor: pointer;
   transition:
     border-color 160ms ease-out,
-    box-shadow 160ms ease-out,
     transform 160ms ease-out;
 }
 
 .template-card:hover {
-  border-color: #8fb0e9;
-  box-shadow: 0 8px 20px rgba(11, 28, 48, 0.1);
-  transform: translateY(-2px);
+  border-color: var(--action-outline);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
 }
 
 .template-card--selected {

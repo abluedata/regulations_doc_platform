@@ -307,8 +307,8 @@ async function goPrevious() {
 
 .reader-tools button {
   display: grid;
-  width: 32px;
-  height: 32px;
+  width: var(--control-height);
+  height: var(--control-height);
   place-items: center;
   padding: 0;
   border: 0;
@@ -376,16 +376,18 @@ async function goPrevious() {
 
 .highlight-block {
   padding: 16px 18px;
+  border: 1px solid var(--outline-soft);
+  border-radius: var(--radius-sm);
 }
 
 .highlight-block--danger {
-  border-left: 4px solid var(--danger);
-  background: #fff3f1;
+  border-color: var(--danger-outline);
+  background: var(--danger-soft);
 }
 
 .highlight-block--info {
-  border-left: 4px solid var(--action);
-  background: #eef4ff;
+  border-color: var(--action-outline);
+  background: var(--action-subtle);
 }
 
 .findings-panel {
@@ -404,7 +406,7 @@ async function goPrevious() {
 }
 
 .analysis-tabs button {
-  min-height: 42px;
+  min-height: var(--control-height);
   padding: 0 8px;
   border: 0;
   border-bottom: 2px solid transparent;

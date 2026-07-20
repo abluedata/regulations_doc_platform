@@ -81,7 +81,6 @@ const actionLabel = computed(() => {
   gap: 8px;
   padding: 16px;
   border: 1px solid var(--outline-soft);
-  border-left-width: 3px;
   border-radius: var(--radius-md);
   color: var(--ink);
   background: var(--surface);
@@ -98,15 +97,15 @@ const actionLabel = computed(() => {
 }
 
 .risk-card--high {
-  border-left-color: var(--danger);
+  border-color: var(--danger-outline);
 }
 
 .risk-card--medium {
-  border-left-color: var(--warning);
+  border-color: var(--warning-outline);
 }
 
 .risk-card--low {
-  border-left-color: var(--action);
+  border-color: var(--action-outline);
 }
 
 .risk-card--resolved {
@@ -182,8 +181,8 @@ const actionLabel = computed(() => {
 }
 
 .risk-card__comparison .risk-card__reference {
-  border: 1px solid #b7cff4;
-  background: #edf4ff;
+  border: 1px solid var(--action-outline);
+  background: var(--action-subtle);
 }
 
 .risk-card__reference b {

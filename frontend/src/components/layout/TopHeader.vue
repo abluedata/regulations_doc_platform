@@ -24,12 +24,12 @@ defineEmits<{
         <el-icon aria-hidden="true"><Menu /></el-icon>
       </button>
 
-      <RouterLink class="product-brand" to="/" aria-label="保险智审首页">
+      <RouterLink class="product-brand" to="/" aria-label="审核智规首页">
         <span class="product-brand__mark" aria-hidden="true">
           <el-icon><DocumentChecked /></el-icon>
         </span>
         <span class="product-brand__copy">
-          <strong>保险智审</strong>
+          <strong>审核智规</strong>
           <small>法规文档智能工作台</small>
         </span>
       </RouterLink>

@@ -210,7 +210,8 @@ async function goPrevious() {
 }
 
 .group-heading button {
-  padding: 4px 0;
+  min-height: var(--control-height);
+  padding: 0 8px;
   border: 0;
   color: var(--action);
   background: transparent;
@@ -336,7 +337,7 @@ async function goPrevious() {
 
 .select-control select {
   width: 100%;
-  min-height: 42px;
+  min-height: var(--control-height);
   padding: 8px 10px;
   border: 1px solid var(--outline);
   border-radius: var(--radius-sm);

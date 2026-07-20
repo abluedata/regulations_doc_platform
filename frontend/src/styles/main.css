@@ -14,9 +14,17 @@
   --success: #14804a;
   --warning: #a15c00;
   --danger: #ba1a1a;
+  --action-subtle: #eef4ff;
+  --action-outline: #b7cff4;
+  --danger-soft: #fff1ef;
+  --danger-outline: #efb8b2;
+  --warning-outline: #d8bc94;
+  --toolbar-bg: #fbfcff;
+  --placeholder: #62758a;
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 12px;
+  --control-height: 40px;
   --header-height: 64px;
   --sidebar-width: 256px;
   --focus-ring: 0 0 0 3px rgba(11, 87, 208, 0.24);
@@ -155,8 +163,8 @@ p {
 
 .top-header__menu-button {
   display: none;
-  width: 40px;
-  height: 40px;
+  width: var(--control-height);
+  height: var(--control-height);
   align-items: center;
   justify-content: center;
   padding: 0;
@@ -301,7 +309,7 @@ p {
   position: relative;
   display: flex;
   width: 100%;
-  min-height: 42px;
+  min-height: var(--control-height);
   align-items: center;
   gap: 11px;
   padding: 9px 12px;
@@ -408,7 +416,7 @@ p {
 
 /* Element Plus foundations */
 .el-button {
-  min-height: 36px;
+  min-height: var(--control-height);
   border-radius: var(--radius-md);
   font-weight: 600;
   transition:
@@ -416,6 +424,10 @@ p {
     border-color 160ms ease-out,
     background-color 160ms ease-out,
     box-shadow 160ms ease-out;
+}
+
+.el-tabs {
+  --el-tabs-header-height: var(--control-height);
 }
 
 .el-button:not(.is-disabled):focus-visible,
@@ -445,6 +457,11 @@ p {
     background-color 160ms ease-out;
 }
 
+.el-input__wrapper,
+.el-select__wrapper {
+  min-height: var(--control-height);
+}
+
 .el-input__wrapper:hover,
 .el-select__wrapper:hover,
 .el-textarea__inner:hover {
@@ -459,7 +476,7 @@ p {
 
 .el-input__inner::placeholder,
 .el-textarea__inner::placeholder {
-  color: #62758a;
+  color: var(--placeholder);
 }
 
 .el-table {
@@ -602,7 +619,7 @@ p {
   gap: 10px 16px;
   padding: 12px 16px;
   border-bottom: 1px solid var(--outline-soft);
-  background: #fbfcff;
+  background: var(--toolbar-bg);
 }
 
 .task-toolbar__group {
@@ -847,9 +864,9 @@ p {
 }
 
 .chat-input-row .el-button.is-circle {
-  width: 42px;
-  height: 42px;
-  flex: 0 0 42px;
+  width: var(--control-height);
+  height: var(--control-height);
+  flex: 0 0 var(--control-height);
 }
 
 .chat-context {
@@ -873,7 +890,7 @@ p {
 .example-chips .el-button {
   width: 100%;
   height: auto;
-  min-height: 38px;
+  min-height: var(--control-height);
   justify-content: space-between;
   margin: 0;
   padding: 8px 10px;
@@ -1042,6 +1059,7 @@ p {
 @media (max-width: 600px) {
   :root {
     --header-height: 56px;
+    --control-height: 44px;
   }
 
   .top-header {
@@ -1159,6 +1177,12 @@ p {
 
   .detail-msg {
     gap: 8px;
+  }
+}
+
+@media (pointer: coarse) {
+  :root {
+    --control-height: 44px;
   }
 }
 

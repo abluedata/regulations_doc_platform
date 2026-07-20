@@ -337,7 +337,7 @@ async function goPrevious() {
 
 .file-row {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) auto 32px;
+  grid-template-columns: 42px minmax(0, 1fr) auto var(--control-height);
   align-items: center;
   gap: 14px;
   min-height: 82px;
@@ -357,7 +357,7 @@ async function goPrevious() {
 .file-row__icon--ready,
 .file-row__icon--queued {
   color: var(--danger);
-  background: #fff0ee;
+  background: var(--danger-soft);
 }
 
 .file-row__icon--uploading {
@@ -435,8 +435,8 @@ async function goPrevious() {
 
 .icon-button {
   display: grid;
-  width: 32px;
-  height: 32px;
+  width: var(--control-height);
+  height: var(--control-height);
   place-items: center;
   padding: 0;
   border: 0;
@@ -448,7 +448,7 @@ async function goPrevious() {
 
 .icon-button:hover {
   color: var(--danger);
-  background: #fff0ee;
+  background: var(--danger-soft);
 }
 
 .side-panel {
@@ -479,7 +479,7 @@ async function goPrevious() {
 .batch-panel input[type="text"],
 .batch-panel select {
   width: 100%;
-  min-height: 40px;
+  min-height: var(--control-height);
   padding: 8px 10px;
   border: 1px solid var(--outline);
   border-radius: var(--radius-sm);
@@ -510,10 +510,11 @@ async function goPrevious() {
 
 .switch-control {
   position: relative;
-  display: block;
+  display: flex;
   width: 44px;
-  height: 24px;
+  min-height: var(--control-height);
   flex: 0 0 auto;
+  align-items: center;
 }
 
 .switch-control input {
@@ -524,7 +525,7 @@ async function goPrevious() {
 .switch-control > span:last-child {
   display: block;
   width: 100%;
-  height: 100%;
+  height: 24px;
   border-radius: 999px;
   background: var(--outline);
   cursor: pointer;
@@ -650,7 +651,7 @@ async function goPrevious() {
   }
 
   .file-row {
-    grid-template-columns: 36px minmax(0, 1fr) 32px;
+    grid-template-columns: 36px minmax(0, 1fr) var(--control-height);
     gap: 10px;
     padding: 12px;
   }

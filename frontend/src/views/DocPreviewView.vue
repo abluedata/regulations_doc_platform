@@ -357,13 +357,14 @@ onUnmounted(() => {
 .outline-btn {
   display: block;
   width: 100%;
+  min-height: var(--control-height);
   text-align: left;
   border: none;
   background: transparent;
   color: var(--ink);
   font-size: 13px;
   line-height: 1.45;
-  padding: 6px 4px;
+  padding: 8px 6px;
   border-radius: 6px;
   cursor: pointer;
   transition: background 0.15s ease;

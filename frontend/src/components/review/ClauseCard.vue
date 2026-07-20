@@ -101,6 +101,10 @@ const clauseIcon = computed(() => {
 .clause-card__toggle {
   position: relative;
   display: inline-flex;
+  min-width: 44px;
+  min-height: var(--control-height);
+  align-items: center;
+  justify-content: flex-end;
   cursor: pointer;
 }
 

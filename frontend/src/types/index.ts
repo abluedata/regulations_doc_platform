@@ -83,3 +83,44 @@ export interface DocPreview {
     pages?: number | null
   }
 }
+
+export type ReviewAnalysisStatus = 'idle' | 'running' | 'complete' | 'approved' | 'rejected'
+
+export interface ReviewFile {
+  id: string
+  name: string
+  size: string
+  progress: number
+  status: 'ready' | 'uploading' | 'queued'
+}
+
+export interface ReviewTemplate {
+  id: string
+  name: string
+  category: string
+  description: string
+  checks: number
+  icon: string
+  popular?: boolean
+}
+
+export interface ReviewClause {
+  id: string
+  group: 'finance' | 'compliance'
+  title: string
+  description: string
+  enabled: boolean
+  priority?: 'high'
+  threshold?: string
+  disabled?: boolean
+}
+
+export interface ReviewRisk {
+  id: string
+  level: 'high' | 'medium' | 'low'
+  section: string
+  title: string
+  description: string
+  currentText?: string
+  referenceText?: string
+}

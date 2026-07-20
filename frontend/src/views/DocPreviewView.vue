@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { marked } from 'marked'
+import { ArrowLeft, ChatDotRound, Delete, RefreshRight } from '@element-plus/icons-vue'
 import type { DocPreview } from '@/types'
 import { deleteDoc, getDocPreview, reparseDoc } from '@/api/docs'
 
@@ -145,55 +146,51 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="page-card preview-page" v-loading="loading && !preview">
-    <div class="preview-top">
-      <div class="preview-top-left">
-        <el-button text @click="goBack">← 知识库</el-button>
-        <h2 class="preview-title">
-          {{ preview?.meta?.filename || preview?.meta?.title || '文档预览' }}
-        </h2>
+  <main class="enterprise-page preview-page" v-loading="loading && !preview">
+    <header class="page-header" data-test="page-header">
+      <div class="page-header__copy preview-heading">
+        <el-button text :icon="ArrowLeft" class="back-button" @click="goBack">知识库</el-button>
+        <h1>{{ preview?.meta?.filename || preview?.meta?.title || '文档预览' }}</h1>
+        <p>{{ metaLine || '查看结构化正文、识别表格与解析元数据' }}</p>
+      </div>
+      <div v-if="preview" class="page-header__actions preview-actions">
         <el-tag
-          v-if="preview"
           size="small"
           :type="statusTagType(preview.status)"
         >
           {{ preview.stage_label || preview.status }}
         </el-tag>
-      </div>
-      <div class="preview-top-right" v-if="preview">
-        <el-button v-if="preview.ready" type="primary" plain @click="goChat">
+        <el-button v-if="preview.ready" type="primary" plain :icon="ChatDotRound" @click="goChat">
           去智能问答
         </el-button>
-        <el-button @click="onReparse">重新解析</el-button>
-        <el-button type="danger" plain @click="onDelete">删除</el-button>
+        <el-button :icon="RefreshRight" @click="onReparse">重新解析</el-button>
+        <el-button type="danger" plain :icon="Delete" @click="onDelete">删除</el-button>
       </div>
-    </div>
-
-    <p v-if="metaLine" class="meta-line">{{ metaLine }}</p>
+    </header>
 
     <!-- 处理中 -->
-    <div v-if="preview && isProcessing" class="state-panel">
+    <section v-if="preview && isProcessing" class="surface-panel state-panel">
       <div class="state-title">文档仍在处理中</div>
       <p class="state-desc">
         当前阶段：{{ preview.stage_label || preview.status }}。列表与本页会自动刷新，完成后可查看结构预览。
       </p>
-      <el-button @click="goBack">返回列表</el-button>
-    </div>
+      <el-button :icon="ArrowLeft" @click="goBack">返回列表</el-button>
+    </section>
 
     <!-- 失败 -->
-    <div v-else-if="preview && preview.status === 'failed'" class="state-panel state-fail">
+    <section v-else-if="preview && preview.status === 'failed'" class="surface-panel state-panel state-fail">
       <div class="state-title">解析失败</div>
       <p class="state-desc">
         {{ preview.message || preview.meta?.error || '请更换文件或重试' }}
       </p>
       <div class="state-actions">
-        <el-button type="primary" @click="onReparse">重新解析</el-button>
-        <el-button @click="goBack">返回列表</el-button>
+        <el-button type="primary" :icon="RefreshRight" @click="onReparse">重新解析</el-button>
+        <el-button :icon="ArrowLeft" @click="goBack">返回列表</el-button>
       </div>
-    </div>
+    </section>
 
     <!-- 就绪预览 -->
-    <div v-else-if="preview && preview.ready" class="preview-body">
+    <div v-else-if="preview && preview.ready" class="surface-panel preview-body">
       <aside class="outline-pane">
         <div class="pane-label">大纲</div>
         <ul v-if="preview.outline?.length" class="outline-list">
@@ -222,7 +219,7 @@ onUnmounted(() => {
             <div
               v-for="(t, idx) in preview.tables"
               :key="t.block_id"
-              class="table-card"
+              class="recognized-table"
             >
               <div class="table-meta">
                 <span>表 {{ idx + 1 }}</span>
@@ -255,55 +252,42 @@ onUnmounted(() => {
       </section>
     </div>
 
-    <div v-else-if="!loading" class="state-panel">
+    <section v-else-if="!loading" class="surface-panel state-panel">
       <div class="state-title">无法加载文档</div>
-      <el-button @click="goBack">返回列表</el-button>
-    </div>
-  </div>
+      <el-button :icon="ArrowLeft" @click="goBack">返回列表</el-button>
+    </section>
+  </main>
 </template>
 
 <style scoped>
-.preview-top {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 4px;
-}
-
-.preview-top-left {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
+.preview-page {
   min-width: 0;
 }
 
-.preview-title {
-  margin: 0;
-  font-size: 1.1rem;
-  font-weight: 700;
-  max-width: 28rem;
+.preview-heading {
+  min-width: 0;
+}
+
+.preview-heading h1 {
+  max-width: min(42rem, 72vw);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.preview-top-right {
+.back-button {
+  align-self: flex-start;
+  margin: -8px 0 4px -12px;
+}
+
+.preview-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.meta-line {
-  margin: 0 0 14px;
-  font-size: 13px;
-  color: var(--muted);
-}
-
 .state-panel {
-  padding: 48px 20px;
+  padding: 64px 20px;
   text-align: center;
 }
 
@@ -314,7 +298,7 @@ onUnmounted(() => {
 }
 
 .state-desc {
-  color: var(--muted);
+  color: var(--ink-muted);
   font-size: 14px;
   max-width: 36rem;
   margin: 0 auto 16px;
@@ -329,11 +313,9 @@ onUnmounted(() => {
 
 .preview-body {
   display: grid;
-  grid-template-columns: minmax(160px, 240px) 1fr;
-  gap: 16px;
-  min-height: 480px;
-  border-top: 1px solid var(--border);
-  padding-top: 12px;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  min-height: 560px;
+  overflow: hidden;
 }
 
 @media (max-width: 800px) {
@@ -343,26 +325,26 @@ onUnmounted(() => {
 }
 
 .outline-pane {
-  border-right: 1px solid var(--border);
-  padding-right: 12px;
-  max-height: calc(100vh - 220px);
+  padding: 20px 16px;
+  border-right: 1px solid var(--outline-soft);
+  background: var(--surface-low);
+  max-height: calc(100vh - 190px);
   overflow-y: auto;
 }
 
 @media (max-width: 800px) {
   .outline-pane {
     border-right: none;
-    border-bottom: 1px solid var(--border);
-    padding-right: 0;
-    padding-bottom: 12px;
+    border-bottom: 1px solid var(--outline-soft);
+    padding: 14px 16px;
     max-height: 180px;
   }
 }
 
 .pane-label {
   font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
+  font-weight: 700;
+  color: var(--ink-muted);
   margin-bottom: 8px;
 }
 
@@ -375,33 +357,35 @@ onUnmounted(() => {
 .outline-btn {
   display: block;
   width: 100%;
+  min-height: var(--control-height);
   text-align: left;
   border: none;
   background: transparent;
-  color: var(--text);
+  color: var(--ink);
   font-size: 13px;
   line-height: 1.45;
-  padding: 6px 4px;
+  padding: 8px 6px;
   border-radius: 6px;
   cursor: pointer;
   transition: background 0.15s ease;
 }
 
 .outline-btn:hover {
-  background: var(--user-bg);
-  color: var(--primary);
+  background: var(--action-soft);
+  color: var(--action);
 }
 
 .content-pane {
   min-width: 0;
-  max-height: calc(100vh - 220px);
+  max-height: calc(100vh - 190px);
   overflow-y: auto;
+  padding: 0 20px 24px;
 }
 
 .md-body {
   font-size: 14px;
   line-height: 1.7;
-  color: var(--text);
+  color: var(--ink);
   max-width: 75ch;
 }
 
@@ -416,9 +400,12 @@ onUnmounted(() => {
 }
 
 .md-body :deep(table) {
+  display: block;
   border-collapse: collapse;
   width: 100%;
+  max-width: 100%;
   margin: 12px 0;
+  overflow-x: auto;
   font-size: 13px;
 }
 
@@ -426,23 +413,24 @@ onUnmounted(() => {
 .md-body :deep(td),
 .table-html :deep(th),
 .table-html :deep(td) {
-  border: 1px solid var(--border);
+  border: 1px solid var(--outline-soft);
   padding: 6px 8px;
   text-align: left;
 }
 
 .md-body :deep(th),
 .table-html :deep(th) {
-  background: #f8fafc;
+  background: var(--surface-low);
   font-weight: 600;
 }
 
-.table-card {
-  margin-bottom: 20px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 12px;
-  background: #fafbfc;
+.recognized-table {
+  padding: 16px 0 20px;
+  border-bottom: 1px solid var(--outline-soft);
+}
+
+.recognized-table:last-child {
+  border-bottom: 0;
 }
 
 .table-meta {
@@ -457,14 +445,13 @@ onUnmounted(() => {
 
 .table-meta .path {
   font-weight: 400;
-  color: var(--muted);
+  color: var(--ink-muted);
   font-size: 12px;
 }
 
 .table-html {
   overflow-x: auto;
-  background: #fff;
-  border-radius: 6px;
+  background: var(--surface);
 }
 
 .table-html :deep(table) {
@@ -474,7 +461,7 @@ onUnmounted(() => {
 }
 
 .empty-hint {
-  color: var(--muted);
+  color: var(--ink-muted);
   font-size: 13px;
   padding: 12px 0;
 }
@@ -488,11 +475,28 @@ onUnmounted(() => {
 }
 
 .info-dl dt {
-  color: var(--muted);
+  color: var(--ink-muted);
 }
 
 .info-dl dd {
   margin: 0;
   word-break: break-all;
+}
+
+@media (max-width: 800px) {
+  .content-pane {
+    max-height: none;
+    padding: 0 14px 20px;
+  }
+}
+
+@media (max-width: 600px) {
+  .preview-heading h1 {
+    max-width: calc(100vw - 28px);
+  }
+
+  .preview-actions {
+    width: 100%;
+  }
 }
 </style>

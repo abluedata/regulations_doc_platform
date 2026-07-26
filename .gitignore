@@ -28,6 +28,7 @@ frontend/*.tsbuildinfo
 
 # ── Trae skill 工作产物 ────────────────
 .superpowers/
+.worktrees/
 
 # ── IDE / 编辑器 ───────────────────────
 .vscode/

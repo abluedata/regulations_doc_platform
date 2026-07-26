@@ -12,6 +12,7 @@ PDF / DOCX：优先调用独立 MinerU 适配服务（pipeline + CPU）；
 """
 from __future__ import annotations
 
+import math
 import mimetypes
 import os
 import re
@@ -276,10 +277,22 @@ def _parse_pdf_pdfplumber(path: Path) -> tuple[list[dict], int | None]:
         for i, page in enumerate(pdf.pages, 1):
             # 表格优先
             tables = page.extract_tables() or []
+            found_tables = []
+            find_tables = getattr(page, "find_tables", None)
+            if callable(find_tables):
+                try:
+                    found_tables = find_tables() or []
+                except Exception:
+                    found_tables = []
             for ti, table in enumerate(tables):
                 if not table:
                     continue
                 html, md = _table_to_html_md(table)
+                table_bbox = (
+                    getattr(found_tables[ti], "bbox", None)
+                    if ti < len(found_tables)
+                    else None
+                )
                 blocks.append(
                     {
                         "type": "table",
@@ -288,35 +301,134 @@ def _parse_pdf_pdfplumber(path: Path) -> tuple[list[dict], int | None]:
                         "markdown": md,
                         "page": i,
                         "meta": {"table_index": ti},
+                        "locator": _pdf_locator(
+                            i, page.width, page.height, [table_bbox]
+                        ),
                     }
                 )
-            text = page.extract_text() or ""
-            text = text.strip()
-            if not text:
-                continue
-            # 粗分段
-            for para in re.split(r"\n{2,}", text):
-                p = para.strip()
-                if not p:
+            words = page.extract_words() or []
+            for line_words in _group_pdf_words(words):
+                text = " ".join(
+                    str(word.get("text") or "").strip() for word in line_words
+                ).strip()
+                rects = [
+                    rect
+                    for word in line_words
+                    if (
+                        rect := _normalize_pdf_rect(
+                            [
+                                word.get("x0"),
+                                word.get("top"),
+                                word.get("x1"),
+                                word.get("bottom"),
+                            ],
+                            page.width,
+                            page.height,
+                        )
+                    )
+                ]
+                if not text or not rects:
                     continue
-                if _looks_like_heading(p):
+                locator = _pdf_locator(i, page.width, page.height, rects=rects)
+                if _looks_like_heading(text):
                     blocks.append(
                         {
                             "type": "heading",
-                            "level": _heading_level(p),
-                            "text": p.replace("\n", " "),
+                            "level": _heading_level(text),
+                            "text": text,
                             "page": i,
+                            "locator": locator,
                         }
                     )
                 else:
                     blocks.append(
                         {
                             "type": "paragraph",
-                            "text": p.replace("\n", " "),
+                            "text": text,
                             "page": i,
+                            "locator": locator,
                         }
                     )
     return blocks, n if blocks else None
+
+
+def _group_pdf_words(words: list[dict], line_tolerance: float = 2.0) -> list[list[dict]]:
+    ordered: list[tuple[float, float, int, dict]] = []
+    for index, word in enumerate(words):
+        if not isinstance(word, dict) or not str(word.get("text") or "").strip():
+            continue
+        try:
+            top = float(word.get("top"))
+            x0 = float(word.get("x0"))
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(top) and math.isfinite(x0):
+            ordered.append((top, x0, index, word))
+    ordered.sort(key=lambda item: (item[0], item[1], item[2]))
+
+    lines: list[list[dict]] = []
+    line_tops: list[float] = []
+    for top, _x0, _index, word in ordered:
+        if not lines or abs(top - line_tops[-1]) > line_tolerance:
+            lines.append([word])
+            line_tops.append(top)
+        else:
+            lines[-1].append(word)
+    return lines
+
+
+def _normalize_pdf_rect(raw: Any, width: Any, height: Any) -> dict | None:
+    if not isinstance(raw, (list, tuple)) or len(raw) != 4:
+        return None
+    try:
+        page_width = float(width)
+        page_height = float(height)
+        x0, y0, x1, y1 = [float(value) for value in raw]
+    except (TypeError, ValueError):
+        return None
+    values = [page_width, page_height, x0, y0, x1, y1]
+    if not all(math.isfinite(value) for value in values):
+        return None
+    if page_width <= 0 or page_height <= 0 or x1 <= x0 or y1 <= y0:
+        return None
+    if x1 < 0 or y1 < 0 or x0 > page_width or y0 > page_height:
+        return None
+    x0 = max(0.0, min(page_width, x0))
+    x1 = max(0.0, min(page_width, x1))
+    y0 = max(0.0, min(page_height, y0))
+    y1 = max(0.0, min(page_height, y1))
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return {
+        "x0": x0 / page_width * 1000.0,
+        "y0": y0 / page_height * 1000.0,
+        "x1": x1 / page_width * 1000.0,
+        "y1": y1 / page_height * 1000.0,
+    }
+
+
+def _pdf_locator(
+    page_number: int,
+    width: Any,
+    height: Any,
+    raw_rects: list[Any] | None = None,
+    *,
+    rects: list[dict] | None = None,
+) -> dict:
+    normalized = list(rects or [])
+    normalized.extend(
+        rect
+        for raw in raw_rects or []
+        if (rect := _normalize_pdf_rect(raw, width, height))
+    )
+    return {
+        "kind": "pdf",
+        "page_number": page_number,
+        "origin": "top_left",
+        "coordinate_system": "normalized_0_1000",
+        "rects": normalized,
+        "precision": "exact" if normalized else "page",
+    }
 
 
 # ─── DOCX ──────────────────────────────────────────────────
@@ -333,6 +445,7 @@ def _parse_docx(path: Path) -> tuple[list[dict], int | None, str]:
 
     doc = Document(str(path))
     blocks: list[dict] = []
+    document_order = 0
 
     # 正文顺序：段落与表交错遍历
     for child in doc.element.body.iterchildren():
@@ -343,13 +456,22 @@ def _parse_docx(path: Path) -> tuple[list[dict], int | None, str]:
             if not text:
                 continue
             style = (para.style.name if para.style else "") or ""
+            block_id = f"b{len(blocks) + 1}"
+            locator = _docx_locator("paragraph", document_order, block_id, text)
+            document_order += 1
             if style.startswith("Heading"):
                 try:
                     level = int(style.replace("Heading", "").strip() or "1")
                 except ValueError:
                     level = 1
                 blocks.append(
-                    {"type": "heading", "level": level, "text": text, "page": 1}
+                    {
+                        "block_id": block_id,
+                        "type": "heading",
+                        "level": level,
+                        "text": text,
+                        "locator": locator,
+                    }
                 )
             elif _looks_like_heading(text):
                 blocks.append(
@@ -357,28 +479,73 @@ def _parse_docx(path: Path) -> tuple[list[dict], int | None, str]:
                         "type": "heading",
                         "level": _heading_level(text),
                         "text": text,
-                        "page": 1,
+                        "block_id": block_id,
+                        "locator": locator,
                     }
                 )
             else:
-                blocks.append({"type": "paragraph", "text": text, "page": 1})
+                blocks.append(
+                    {
+                        "block_id": block_id,
+                        "type": "paragraph",
+                        "text": text,
+                        "locator": locator,
+                    }
+                )
         elif tag == "tbl":
             table = Table(child, doc)
             rows = [[(c.text or "").strip() for c in row.cells] for row in table.rows]
             if not rows:
                 continue
+            block_id = f"b{len(blocks) + 1}"
+            locators: list[dict] = []
+            for cell_text in _docx_xml_cell_texts(child, table):
+                locators.append(
+                    _docx_locator("table_cell", document_order, block_id, cell_text)
+                )
+                document_order += 1
             html, md = _table_to_html_md(rows)
             blocks.append(
                 {
+                    "block_id": block_id,
                     "type": "table",
                     "text": md,
                     "html": html,
                     "markdown": md,
-                    "page": 1,
+                    "locators": locators,
                 }
             )
 
     return blocks, None, "python-docx"
+
+
+def _docx_xml_cell_texts(table_element: Any, table: Any) -> list[str]:
+    from docx.table import _Cell
+
+    return [
+        (_Cell(cell, table).text or "").strip()
+        for row in table_element.tr_lst
+        for cell in row.tc_lst
+    ]
+
+
+def _docx_locator(
+    container_kind: str, document_order: int, block_id: str, text: str
+) -> dict:
+    kind_code = "p" if container_kind == "paragraph" else "tc"
+    return {
+        "kind": "docx",
+        "locator_id": f"docx-{kind_code}-{document_order:06d}",
+        "container_kind": container_kind,
+        "document_order": document_order,
+        "block_id": block_id,
+        "text_range": {
+            "start": 0,
+            "end": len(text),
+            "unit": "unicode_code_point",
+        },
+        "precision": "exact",
+    }
 
 
 # ─── Normalize → IR ────────────────────────────────────────
@@ -412,7 +579,7 @@ def _normalize_ir(
             bid += 1
             blocks.append(
                 {
-                    "block_id": f"b{bid}",
+                    "block_id": raw.get("block_id") or f"b{bid}",
                     "type": "heading",
                     "level": level,
                     "page_start": raw.get("page") or raw.get("page_start"),
@@ -422,6 +589,7 @@ def _normalize_ir(
                     "html": None,
                     "markdown": None,
                     "meta": raw.get("meta") or {},
+                    **_raw_locator_fields(raw),
                 }
             )
             continue
@@ -438,7 +606,7 @@ def _normalize_ir(
             )
             blocks.append(
                 {
-                    "block_id": f"b{bid}",
+                    "block_id": raw.get("block_id") or f"b{bid}",
                     "type": "table",
                     "level": None,
                     "page_start": raw.get("page") or raw.get("page_start"),
@@ -451,6 +619,7 @@ def _normalize_ir(
                         **(raw.get("meta") or {}),
                         "merged": bool(raw.get("merged")),
                     },
+                    **_raw_locator_fields(raw),
                 }
             )
         else:
@@ -458,7 +627,7 @@ def _normalize_ir(
                 continue
             blocks.append(
                 {
-                    "block_id": f"b{bid}",
+                    "block_id": raw.get("block_id") or f"b{bid}",
                     "type": "list" if btype == "list" else "paragraph",
                     "level": None,
                     "page_start": raw.get("page") or raw.get("page_start"),
@@ -468,6 +637,7 @@ def _normalize_ir(
                     "html": None,
                     "markdown": None,
                     "meta": raw.get("meta") or {},
+                    **_raw_locator_fields(raw),
                 }
             )
 
@@ -481,6 +651,15 @@ def _normalize_ir(
         },
         "blocks": blocks,
     }
+
+
+def _raw_locator_fields(raw: dict) -> dict:
+    fields = {}
+    if isinstance(raw.get("locator"), dict):
+        fields["locator"] = raw["locator"]
+    if isinstance(raw.get("locators"), list):
+        fields["locators"] = raw["locators"]
+    return fields
 
 
 def _merge_adjacent_tables(raw_blocks: list[dict]) -> list[dict]:
@@ -515,6 +694,8 @@ def _merge_adjacent_tables(raw_blocks: list[dict]) -> list[dict]:
                 if nxt.get("html"):
                     acc["html"] = (acc.get("html") or "") + "\n" + nxt["html"]
                 acc["page_end"] = nxt.get("page") or nxt.get("page_end") or acc.get("page_end")
+                if nxt.get("locators"):
+                    acc["locators"] = list(acc.get("locators") or []) + list(nxt["locators"])
                 acc["merged"] = True
                 j += 1
             else:
@@ -700,6 +881,7 @@ def _chunk_row(
         "page_start": page_start,
         "page_end": page_end,
         "block_id": block.get("block_id"),
+        **_raw_locator_fields(block),
         "filename": "",  # filled at index time
     }
 

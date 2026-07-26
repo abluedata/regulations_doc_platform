@@ -18,6 +18,7 @@
 """
 from __future__ import annotations
 
+import math
 import os
 import re
 from pathlib import Path
@@ -194,6 +195,7 @@ def _content_list_to_blocks(content_list: list) -> list[dict]:
         if isinstance(page, int) and page >= 0:
             # mineru content_list 多为 0-based
             page = page + 1
+        locator = _mineru_pdf_locator(page, it)
         text = (
             it.get("text")
             or it.get("content")
@@ -217,6 +219,7 @@ def _content_list_to_blocks(content_list: list) -> list[dict]:
                     "html": html if isinstance(html, str) else None,
                     "markdown": md if isinstance(md, str) else text,
                     "page": page,
+                    "locator": locator,
                 }
             )
             continue
@@ -235,6 +238,7 @@ def _content_list_to_blocks(content_list: list) -> list[dict]:
                     "level": max(1, min(level, 6)),
                     "text": text.replace("\n", " "),
                     "page": page,
+                    "locator": locator,
                 }
             )
             continue
@@ -242,7 +246,14 @@ def _content_list_to_blocks(content_list: list) -> list[dict]:
         if btype in ("image", "figure", "equation", "discarded"):
             # 图片说明可保留
             if text:
-                blocks.append({"type": "paragraph", "text": text, "page": page})
+                blocks.append(
+                    {
+                        "type": "paragraph",
+                        "text": text,
+                        "page": page,
+                        "locator": locator,
+                    }
+                )
             continue
 
         if not text:
@@ -252,9 +263,44 @@ def _content_list_to_blocks(content_list: list) -> list[dict]:
                 "type": "list" if btype in ("list", "list_item") else "paragraph",
                 "text": text.replace("\n", " ") if btype != "list" else text,
                 "page": page,
+                "locator": locator,
             }
         )
     return blocks
+
+
+def _mineru_pdf_locator(page: Any, item: dict) -> dict:
+    """Normalize MinerU 3.4.x content-list geometry without guessing its scale."""
+    page_number = page if isinstance(page, int) and page > 0 else None
+    locator = {
+        "kind": "pdf",
+        "page_number": page_number,
+        "origin": "top_left",
+        "coordinate_system": "normalized_0_1000",
+        "rects": [],
+        "precision": "page" if page_number else "unknown",
+    }
+    raw = item.get("bbox", item.get("box", item.get("rect")))
+    if isinstance(raw, dict):
+        raw = [raw.get("x0"), raw.get("y0"), raw.get("x1"), raw.get("y1")]
+    if not isinstance(raw, (list, tuple)) or len(raw) != 4:
+        return locator
+    try:
+        values = [float(v) for v in raw]
+    except (TypeError, ValueError):
+        return locator
+    if not all(math.isfinite(v) for v in values):
+        return locator
+    x0, y0, x1, y1 = values
+    if x1 <= x0 or y1 <= y0 or max(x0, y0) > 1000 or min(x1, y1) < 0:
+        return locator
+    # MinerU content-list bboxes are already in its documented 0..1000 space.
+    x0, y0, x1, y1 = [max(0.0, min(1000.0, v)) for v in values]
+    if x1 <= x0 or y1 <= y0:
+        return locator
+    locator["rects"] = [{"x0": x0, "y0": y0, "x1": x1, "y1": y1}]
+    locator["precision"] = "exact"
+    return locator
 
 
 def _markdown_to_blocks(md: str) -> list[dict]:

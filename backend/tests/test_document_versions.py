@@ -507,9 +507,12 @@ class TestDocumentVersions(unittest.TestCase):
             main.reconcile_document_publications,
             main.app.router.on_startup,
         )
-        with mock.patch.object(store, "reconcile_pending_publications") as reconcile:
+        self._require_store_api("reconcile_pending_deletions")
+        with mock.patch.object(store, "reconcile_pending_publications") as reconcile, \
+             mock.patch.object(store, "reconcile_pending_deletions") as deletions:
             main.reconcile_document_publications()
         reconcile.assert_called_once_with()
+        deletions.assert_called_once_with()
 
     def test_pending_publication_fails_closed_on_malformed_existing_index(self):
         source = self._create_doc()
@@ -762,6 +765,50 @@ class TestDocumentVersions(unittest.TestCase):
                 manifest,
             )
 
+    def test_tombstoned_document_is_immediately_hidden_while_index_row_remains(self):
+        self._create_doc()
+        with mock.patch.object(
+            store.shutil,
+            "rmtree",
+            side_effect=PermissionError("file is open"),
+        ):
+            with self.assertRaises(PermissionError):
+                store.delete_doc("doc-version-test")
+
+        self.assertEqual(
+            ["doc-version-test"],
+            [item["id"] for item in json.loads(store.INDEX_FILE.read_text("utf-8"))],
+        )
+        self.assertEqual(([], 0), store.list_docs())
+        self.assertEqual(([], [], []), store.index_visibility_snapshot())
+
+    def test_startup_reconciles_crash_after_filesystem_deletion(self):
+        self._create_doc()
+        with mock.patch.object(
+            store, "_save_index", side_effect=OSError("crash before index replace")
+        ):
+            with self.assertRaises(OSError):
+                store.delete_doc("doc-version-test")
+
+        self.assertFalse(store.doc_dir("doc-version-test").exists())
+        self.assertEqual(
+            ["doc-version-test"],
+            [item["id"] for item in json.loads(store.INDEX_FILE.read_text("utf-8"))],
+        )
+        self.assertEqual(([], 0), store.list_docs())
+        self.assertEqual(([], [], []), store.index_visibility_snapshot())
+        self._require_store_api("reconcile_pending_deletions")
+
+        with mock.patch.object(pipeline, "delete_doc_from_index") as cleanup:
+            store.reconcile_pending_deletions()
+
+        cleanup.assert_called_once_with("doc-version-test")
+        self.assertEqual([], json.loads(store.INDEX_FILE.read_text("utf-8")))
+        tombstone = json.loads(next(
+            (store.INDEX_FILE.parent / "deletion_tombstones").glob("*.json")
+        ).read_text("utf-8"))
+        self.assertEqual("complete", tombstone.get("phase"))
+
     def test_search_hides_staged_chunks_until_version_publication(self):
         from services import search
 
@@ -947,6 +994,160 @@ class TestDocumentVersions(unittest.TestCase):
         delete_index.assert_called_once_with("doc-version-test")
         self.assertFalse(store.doc_dir("doc-version-test").exists())
         self.assertEqual([], json.loads(store.INDEX_FILE.read_text("utf-8")))
+
+    def test_delete_route_persists_es_failure_for_startup_retry(self):
+        from api.routes import docs
+
+        self._create_doc()
+        with mock.patch.object(
+            docs,
+            "delete_doc_from_index",
+            side_effect=RuntimeError("ES unavailable"),
+        ):
+            with self.assertRaises(RuntimeError):
+                docs.api_delete("doc-version-test")
+
+        self.assertFalse(store.doc_dir("doc-version-test").exists())
+        self.assertEqual([], json.loads(store.INDEX_FILE.read_text("utf-8")))
+        tombstone_path = next(
+            (store.INDEX_FILE.parent / "deletion_tombstones").glob("*.json")
+        )
+        self.assertEqual(
+            "pending_es",
+            json.loads(tombstone_path.read_text("utf-8")).get("phase"),
+        )
+        with mock.patch.object(pipeline, "delete_doc_from_index") as cleanup:
+            store.reconcile_pending_deletions()
+        cleanup.assert_called_once_with("doc-version-test")
+        self.assertEqual(
+            "complete",
+            json.loads(tombstone_path.read_text("utf-8")).get("phase"),
+        )
+
+    def test_delete_by_query_transport_errors_propagate(self):
+        class FakeIndices:
+            def exists(self, *, index):
+                return True
+
+        class FakeElasticsearch:
+            def __init__(self, *args, **kwargs):
+                self.indices = FakeIndices()
+
+            def delete_by_query(self, **kwargs):
+                raise ConnectionError("transport failed")
+
+        fake_module = types.SimpleNamespace(Elasticsearch=FakeElasticsearch)
+        with mock.patch.dict(sys.modules, {"elasticsearch": fake_module}):
+            with self.assertRaises(ConnectionError):
+                pipeline.delete_doc_from_index("doc-version-test")
+
+    def test_delete_by_query_validates_object_response_completion(self):
+        class ObjectResponse:
+            def __init__(self, body, status=200):
+                self.body = body
+                self.meta = types.SimpleNamespace(status=status)
+
+        class FakeIndices:
+            def exists(self, *, index):
+                return True
+
+        cases = {
+            "timeout": {
+                "timed_out": True,
+                "failures": [],
+                "version_conflicts": 0,
+                "total": 1,
+                "deleted": 1,
+                "batches": 1,
+                "noops": 0,
+            },
+            "failures": {
+                "timed_out": False,
+                "failures": [{"cause": "boom"}],
+                "version_conflicts": 0,
+                "total": 1,
+                "deleted": 0,
+                "batches": 1,
+                "noops": 0,
+            },
+            "conflicts": {
+                "timed_out": False,
+                "failures": [],
+                "version_conflicts": 1,
+                "total": 1,
+                "deleted": 0,
+                "batches": 1,
+                "noops": 0,
+            },
+            "incomplete": {
+                "timed_out": False,
+                "failures": [],
+                "version_conflicts": 0,
+                "total": 2,
+                "deleted": 1,
+                "batches": 1,
+                "noops": 0,
+            },
+            "malformed": {
+                "timed_out": False,
+                "failures": [],
+                "version_conflicts": 0,
+                "total": True,
+                "deleted": 1,
+                "batches": 1,
+                "noops": 0,
+            },
+        }
+        for name, body in cases.items():
+            with self.subTest(name=name):
+                class FakeElasticsearch:
+                    def __init__(self, *args, **kwargs):
+                        self.indices = FakeIndices()
+
+                    def delete_by_query(self, **kwargs):
+                        return ObjectResponse(body)
+
+                fake_module = types.SimpleNamespace(Elasticsearch=FakeElasticsearch)
+                with mock.patch.dict(sys.modules, {"elasticsearch": fake_module}):
+                    with self.assertRaisesRegex(RuntimeError, "delete.*query"):
+                        pipeline.delete_doc_from_index("doc-version-test")
+
+        valid = {
+            "timed_out": False,
+            "failures": [],
+            "version_conflicts": 0,
+            "total": 1,
+            "deleted": 1,
+            "batches": 1,
+            "noops": 0,
+        }
+
+        class ValidElasticsearch:
+            def __init__(self, *args, **kwargs):
+                self.indices = FakeIndices()
+
+            def delete_by_query(self, **kwargs):
+                return ObjectResponse(valid)
+
+        fake_module = types.SimpleNamespace(Elasticsearch=ValidElasticsearch)
+        with mock.patch.dict(sys.modules, {"elasticsearch": fake_module}):
+            pipeline.delete_doc_from_index("doc-version-test")
+
+        class BodyOnlyResponse:
+            def __init__(self, body):
+                self.body = body
+
+        class MissingStatusElasticsearch:
+            def __init__(self, *args, **kwargs):
+                self.indices = FakeIndices()
+
+            def delete_by_query(self, **kwargs):
+                return BodyOnlyResponse(valid)
+
+        fake_module = types.SimpleNamespace(Elasticsearch=MissingStatusElasticsearch)
+        with mock.patch.dict(sys.modules, {"elasticsearch": fake_module}):
+            with self.assertRaisesRegex(RuntimeError, "status"):
+                pipeline.delete_doc_from_index("doc-version-test")
 
     def test_failed_reparse_preserves_legacy_top_level_artifacts(self):
         from api.routes import docs

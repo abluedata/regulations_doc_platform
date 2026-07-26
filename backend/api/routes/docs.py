@@ -24,6 +24,7 @@ from services.document_store import (
     load_ir,
     load_meta,
     load_preview_md,
+    mark_deletion_complete,
     safe_filename,
 )
 
@@ -168,6 +169,7 @@ def api_delete(doc_id: str):
         raise HTTPException(status_code=404, detail="文档不存在")
     delete_doc(doc_id)
     delete_doc_from_index(doc_id)
+    mark_deletion_complete(doc_id)
     return SimpleMessageResponse(message="已删除文档及索引", success=True)
 
 

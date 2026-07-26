@@ -136,6 +136,69 @@ def _deletion_tombstone_path(doc_id: str) -> Path:
     return _deletion_tombstone_dir() / f"{name}.json"
 
 
+_DELETION_PHASES = (
+    "pending_filesystem",
+    "pending_index",
+    "pending_es",
+    "complete",
+)
+
+
+def _read_deletion_tombstone(path: Path) -> dict:
+    try:
+        tombstone = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"deletion tombstone is unreadable: {path.name}") from exc
+    if not isinstance(tombstone, dict):
+        raise RuntimeError(f"deletion tombstone is invalid: {path.name}")
+    doc_id = tombstone.get("doc_id")
+    generation = tombstone.get("generation")
+    phase = tombstone.get("phase", "pending_filesystem")
+    if (
+        not isinstance(doc_id, str)
+        or not doc_id
+        or not isinstance(generation, str)
+        or not generation
+        or phase not in _DELETION_PHASES
+        or path != _deletion_tombstone_path(doc_id)
+    ):
+        raise RuntimeError(f"deletion tombstone is invalid: {path.name}")
+    return {**tombstone, "phase": phase}
+
+
+def _deletion_tombstones_locked() -> dict[str, dict]:
+    directory = _deletion_tombstone_dir()
+    if not directory.exists():
+        return {}
+    tombstones: dict[str, dict] = {}
+    for path in sorted(directory.glob("*.json")):
+        tombstone = _read_deletion_tombstone(path)
+        tombstones[tombstone["doc_id"]] = tombstone
+    return tombstones
+
+
+def _write_deletion_phase_locked(
+    doc_id: str, phase: str, tombstone: dict | None = None
+) -> dict:
+    if phase not in _DELETION_PHASES:
+        raise ValueError(f"invalid deletion phase: {phase}")
+    path = _deletion_tombstone_path(doc_id)
+    if tombstone is None and path.exists():
+        tombstone = _read_deletion_tombstone(path)
+    target = {
+        **(tombstone or {}),
+        "doc_id": doc_id,
+        "generation": (tombstone or {}).get("generation") or uuid.uuid4().hex,
+        "created_at": (tombstone or {}).get("created_at") or _now(),
+        "phase": phase,
+        "updated_at": _now(),
+    }
+    _atomic_write_text(
+        path, json.dumps(target, ensure_ascii=False, indent=2)
+    )
+    return target
+
+
 def _is_tombstoned(doc_id: str) -> bool:
     return _deletion_tombstone_path(doc_id).exists()
 
@@ -398,8 +461,11 @@ def migrate_index_visibility() -> None:
     reconcile_pending_publications()
     with _index_lock:
         items = _load_visibility_index_locked()
+        tombstoned_doc_ids = set(_deletion_tombstones_locked())
         changed = False
         for item in items:
+            if item.get("id") in tombstoned_doc_ids:
+                continue
             if item.get("visibility_migrated") is True:
                 continue
             doc_id = item.get("id")
@@ -427,6 +493,7 @@ def index_visibility_snapshot() -> tuple[list[str], list[str], list[str]]:
     migrate_index_visibility()
     with _index_lock:
         items = _load_visibility_index_locked()
+        tombstoned_doc_ids = set(_deletion_tombstones_locked())
 
     active_keys: list[str] = []
     versioned_doc_ids: list[str] = []
@@ -434,7 +501,7 @@ def index_visibility_snapshot() -> tuple[list[str], list[str], list[str]]:
     for item in items:
         doc_id = item.get("id")
         version_id = item.get("indexed_version_id")
-        if not doc_id:
+        if not doc_id or doc_id in tombstoned_doc_ids:
             continue
         if version_id:
             active_keys.append(f"{doc_id}:{version_id}")
@@ -457,6 +524,8 @@ def list_docs(
     reconcile_pending_publications()
     with _index_lock:
         items = _load_index()
+        tombstoned_doc_ids = set(_deletion_tombstones_locked())
+        items = [item for item in items if item.get("id") not in tombstoned_doc_ids]
     if status and status != "all":
         if status == "processing":
             items = [
@@ -679,26 +748,57 @@ def delete_doc(doc_id: str) -> bool:
             tombstone_path = _deletion_tombstone_path(doc_id)
             if not directory.exists() and not row_exists and not tombstone_path.exists():
                 return False
-            if not tombstone_path.exists():
-                _atomic_write_text(
-                    tombstone_path,
-                    json.dumps(
-                        {
-                            "doc_id": doc_id,
-                            "generation": uuid.uuid4().hex,
-                            "created_at": _now(),
-                        },
-                        ensure_ascii=False,
-                        indent=2,
-                    ),
-                )
+            tombstone = (
+                _read_deletion_tombstone(tombstone_path)
+                if tombstone_path.exists()
+                else _write_deletion_phase_locked(doc_id, "pending_filesystem")
+            )
+            if tombstone["phase"] == "complete":
+                return True
             if directory.exists():
                 shutil.rmtree(directory)
             if directory.exists():
                 raise RuntimeError(f"document directory deletion did not complete: {doc_id}")
+            if tombstone["phase"] == "pending_filesystem":
+                tombstone = _write_deletion_phase_locked(
+                    doc_id, "pending_index", tombstone
+                )
             items = [item for item in items if item.get("id") != doc_id]
             _save_index(items)
+            if tombstone["phase"] != "pending_es":
+                _write_deletion_phase_locked(doc_id, "pending_es", tombstone)
             return True
+
+
+def mark_deletion_complete(doc_id: str) -> None:
+    with _doc_lock(doc_id):
+        with _index_lock:
+            path = _deletion_tombstone_path(doc_id)
+            if not path.exists():
+                raise RuntimeError(f"deletion tombstone is missing: {doc_id}")
+            tombstone = _read_deletion_tombstone(path)
+            if doc_dir(doc_id).exists():
+                raise RuntimeError(f"document directory still exists: {doc_id}")
+            items = _load_publication_index(allow_missing=False)
+            if any(item.get("id") == doc_id for item in items):
+                raise RuntimeError(f"document index row still exists: {doc_id}")
+            _write_deletion_phase_locked(doc_id, "complete", tombstone)
+
+
+def reconcile_pending_deletions() -> None:
+    """Finish durable local and Elasticsearch deletion phases after restart."""
+    with _index_lock:
+        pending = [
+            doc_id
+            for doc_id, tombstone in _deletion_tombstones_locked().items()
+            if tombstone["phase"] != "complete"
+        ]
+    from services.document_pipeline import delete_doc_from_index
+
+    for doc_id in sorted(pending):
+        delete_doc(doc_id)
+        delete_doc_from_index(doc_id)
+        mark_deletion_complete(doc_id)
 
 
 def original_file(doc_id: str) -> Path | None:

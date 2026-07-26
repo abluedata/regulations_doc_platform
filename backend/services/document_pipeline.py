@@ -924,24 +924,48 @@ def _index_chunks(
 
 
 def delete_doc_from_index(doc_id: str) -> None:
-    try:
-        from elasticsearch import Elasticsearch
+    from elasticsearch import Elasticsearch
 
-        es = Elasticsearch(
-            ES_HOST,
-            basic_auth=(ES_USER, ES_PASS),
-            verify_certs=False,
-            ssl_show_warn=False,
-        )
-        if es.indices.exists(index=INDEX_NAME):
-            es.delete_by_query(
-                index=INDEX_NAME,
-                body={"query": {"term": {"doc_id": doc_id}}},
-                refresh=True,
-                conflicts="proceed",
+    es = Elasticsearch(
+        ES_HOST,
+        basic_auth=(ES_USER, ES_PASS),
+        verify_certs=False,
+        ssl_show_warn=False,
+    )
+    if not es.indices.exists(index=INDEX_NAME):
+        return
+    response = es.delete_by_query(
+        index=INDEX_NAME,
+        body={"query": {"term": {"doc_id": doc_id}}},
+        refresh=True,
+        conflicts="proceed",
+    )
+    result = response_body(response, operation="document delete by query")
+    response_status = getattr(getattr(response, "meta", None), "status", None)
+    counters = ("total", "deleted", "batches", "noops", "version_conflicts")
+    if (
+        (hasattr(response, "body") and response_status is None)
+        or (
+            response_status is not None
+            and (
+                type(response_status) is not int
+                or not 200 <= response_status < 300
             )
-    except Exception as e:
-        print(f"⚠️ ES 删除 doc {doc_id}: {e}")
+        )
+    ):
+        raise RuntimeError("document delete by query returned a bad status")
+    if (
+        result.get("timed_out") is not False
+        or result.get("failures") != []
+        or any(
+            type(result.get(name)) is not int or result[name] < 0
+            for name in counters
+        )
+        or result.get("version_conflicts") != 0
+        or result.get("noops") != 0
+        or result.get("deleted") != result.get("total")
+    ):
+        raise RuntimeError("document delete by query did not complete")
 
 
 def _embed(texts: list[str]) -> list[list[float]]:

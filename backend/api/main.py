@@ -69,6 +69,7 @@ def reconcile_document_publications() -> None:
     from services import document_store
 
     document_store.reconcile_pending_publications()
+    document_store.reconcile_pending_deletions()
 
 
 app.router.add_event_handler("startup", reconcile_document_publications)

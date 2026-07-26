@@ -9,6 +9,7 @@
 """
 import json
 import logging
+import threading
 
 import httpx
 import requests
@@ -43,6 +44,8 @@ from services.document_store import index_visibility_snapshot
 from elasticsearch import Elasticsearch
 
 logger = logging.getLogger(__name__)
+_visibility_v2_lock = threading.Lock()
+_visibility_v2_ready = False
 
 
 def _safe_log(msg: str, level: int = logging.INFO) -> None:
@@ -190,48 +193,68 @@ def route_decision(query: str, local_context: str) -> str:
 
 # ─── 本地搜索 (BM25 + Vector) ─────────────────────────────
 
-def _exact_terms(field: str, values: list[str]) -> dict:
-    return {
-        "bool": {
-            "should": [
-                {"terms": {field: values}},
-                {"terms": {f"{field}.keyword": values}},
-            ],
-            "minimum_should_match": 1,
-        }
-    }
-
-
 def _visibility_filter(active_keys: list[str], versioned_doc_ids: list[str]) -> dict:
     legacy_must_not: list[dict] = [
-        {"exists": {"field": "visibility_key"}},
+        {"exists": {"field": "visibility_key_v2"}},
         {"exists": {"field": "document_version_id"}},
     ]
     if versioned_doc_ids:
-        legacy_must_not.append(_exact_terms("doc_id", versioned_doc_ids))
+        legacy_must_not.append({"terms": {"doc_id": versioned_doc_ids}})
     visibility_should: list[dict] = [
         {"bool": {"must_not": legacy_must_not}}
     ]
     if active_keys:
-        visibility_should.insert(0, _exact_terms("visibility_key", active_keys))
-        for key in active_keys:
-            doc_id, version_id = key.rsplit(":", 1)
-            visibility_should.append(
-                {
-                    "bool": {
-                        "filter": [
-                            _exact_terms("doc_id", [doc_id]),
-                            _exact_terms("document_version_id", [version_id]),
-                        ]
-                    }
-                }
-            )
+        visibility_should.insert(0, {"terms": {"visibility_key_v2": active_keys}})
     return {
         "bool": {
             "should": visibility_should,
             "minimum_should_match": 1,
         }
     }
+
+
+def _ensure_visibility_v2(es) -> None:
+    global _visibility_v2_ready
+    if _visibility_v2_ready:
+        return
+    with _visibility_v2_lock:
+        if _visibility_v2_ready:
+            return
+        es.indices.put_mapping(
+            index=INDEX_NAME,
+            properties={"visibility_key_v2": {"type": "keyword"}},
+        )
+        result = es.update_by_query(
+            index=INDEX_NAME,
+            body={
+                "query": {
+                    "bool": {
+                        "filter": [
+                            {"exists": {"field": "doc_id"}},
+                            {"exists": {"field": "document_version_id"}},
+                        ],
+                        "must_not": [
+                            {"exists": {"field": "visibility_key_v2"}}
+                        ],
+                    }
+                },
+                "script": {
+                    "lang": "painless",
+                    "source": (
+                        "ctx._source.visibility_key_v2 = "
+                        "ctx._source.doc_id + ':' + "
+                        "ctx._source.document_version_id"
+                    ),
+                },
+            },
+            conflicts="proceed",
+            refresh=True,
+        )
+        if isinstance(result, dict) and (
+            result.get("timed_out") or result.get("failures")
+        ):
+            raise RuntimeError("visibility key backfill did not complete")
+        _visibility_v2_ready = True
 
 
 def search_local(query: str, k: int = None) -> list[dict]:
@@ -248,8 +271,9 @@ def search_local(query: str, k: int = None) -> list[dict]:
 
     try:
         active_keys, versioned_doc_ids = index_visibility_snapshot()
+        _ensure_visibility_v2(es)
         visibility_filter = _visibility_filter(active_keys, versioned_doc_ids)
-    except RuntimeError:
+    except Exception:
         visibility_filter = {"match_none": {}}
 
     # --- 2a. BM25 搜索 ---

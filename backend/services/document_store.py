@@ -198,7 +198,7 @@ def save_meta(meta: dict) -> None:
 
 
 def _index_row(meta: dict) -> dict:
-    return {
+    row = {
         "id": meta["id"],
         "filename": meta.get("filename", ""),
         "title": meta.get("title", ""),
@@ -214,14 +214,26 @@ def _index_row(meta: dict) -> dict:
         "updated_at": meta.get("updated_at"),
         "duration_sec": meta.get("duration_sec"),
         "engine": meta.get("engine"),
-        "current_version_id": meta.get("current_version_id"),
-        "indexed_version_id": meta.get("indexed_version_id"),
+        "visibility_migrated": True,
     }
+    if meta.get("current_version_id"):
+        row["current_version_id"] = meta["current_version_id"]
+    if meta.get("indexed_version_id"):
+        row["indexed_version_id"] = meta["indexed_version_id"]
+    return row
 
 
 def _load_visibility_index_locked() -> list[dict]:
     if not INDEX_FILE.exists():
-        return []
+        try:
+            storage_empty = not UPLOADS_DIR.exists() or next(
+                UPLOADS_DIR.iterdir(), None
+            ) is None
+        except OSError as exc:
+            raise RuntimeError("document storage state is unreadable") from exc
+        if storage_empty:
+            return []
+        raise RuntimeError("document visibility index is missing")
     try:
         items = json.loads(INDEX_FILE.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -237,11 +249,23 @@ def migrate_index_visibility() -> None:
         items = _load_visibility_index_locked()
         changed = False
         for item in items:
-            if "current_version_id" in item and "indexed_version_id" in item:
+            if item.get("visibility_migrated") is True:
                 continue
-            meta = load_meta(item.get("id", "")) or {}
-            item["current_version_id"] = meta.get("current_version_id")
-            item["indexed_version_id"] = meta.get("indexed_version_id")
+            doc_id = item.get("id")
+            path = meta_path(doc_id or "")
+            try:
+                meta = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise RuntimeError(
+                    f"visibility metadata is unreadable for document: {doc_id}"
+                ) from exc
+            if not isinstance(meta, dict) or meta.get("id") != doc_id:
+                raise RuntimeError(f"visibility metadata is invalid for document: {doc_id}")
+            if meta.get("current_version_id"):
+                item["current_version_id"] = meta["current_version_id"]
+            if meta.get("indexed_version_id"):
+                item["indexed_version_id"] = meta["indexed_version_id"]
+            item["visibility_migrated"] = True
             changed = True
         if changed:
             _save_index(items)

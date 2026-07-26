@@ -74,7 +74,6 @@ def _atomic_write_text(path: Path, content: str) -> None:
 
 
 def _write_meta_file(meta: dict) -> None:
-    meta["updated_at"] = _now()
     _atomic_write_text(
         meta_path(meta["id"]), json.dumps(meta, ensure_ascii=False, indent=2)
     )
@@ -87,6 +86,20 @@ def _load_index() -> list[dict]:
         return json.loads(INDEX_FILE.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return []
+
+
+def _load_publication_index(*, allow_missing: bool) -> list[dict]:
+    if not INDEX_FILE.exists():
+        if allow_missing:
+            return []
+        raise RuntimeError("document index disappeared during publication recovery")
+    try:
+        items = json.loads(INDEX_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError("document index is unreadable during publication") from exc
+    if not isinstance(items, list) or not all(isinstance(item, dict) for item in items):
+        raise RuntimeError("document index has invalid publication structure")
+    return items
 
 
 def _save_index(items: list[dict]) -> None:
@@ -102,6 +115,15 @@ def doc_dir(doc_id: str) -> Path:
 
 def meta_path(doc_id: str) -> Path:
     return doc_dir(doc_id) / "meta.json"
+
+
+def _publication_journal_dir() -> Path:
+    return INDEX_FILE.parent / "publication_journal"
+
+
+def _publication_journal_path(doc_id: str) -> Path:
+    name = hashlib.sha256(doc_id.encode("utf-8")).hexdigest()
+    return _publication_journal_dir() / f"{name}.json"
 
 
 def ir_path(doc_id: str) -> Path:
@@ -157,14 +179,84 @@ def compute_version_id(
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def load_meta(doc_id: str) -> dict | None:
-    p = meta_path(doc_id)
-    if not p.exists():
-        return None
+def _upsert_index_row(items: list[dict], row: dict) -> None:
+    for index, item in enumerate(items):
+        if item.get("id") == row["id"]:
+            items[index] = row
+            return
+    items.insert(0, row)
+
+
+def _read_publication_journal(path: Path) -> dict:
     try:
-        return json.loads(p.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return None
+        journal = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"publication journal is unreadable: {path.name}") from exc
+    if not isinstance(journal, dict):
+        raise RuntimeError(f"publication journal is invalid: {path.name}")
+    doc_id = journal.get("doc_id")
+    generation = journal.get("generation")
+    index_existed = journal.get("index_existed")
+    meta = journal.get("meta")
+    index_row = journal.get("index_row")
+    if (
+        not isinstance(doc_id, str)
+        or not doc_id
+        or not isinstance(generation, str)
+        or not generation
+        or type(index_existed) is not bool
+        or not isinstance(meta, dict)
+        or meta.get("id") != doc_id
+        or meta.get("publication_generation") != generation
+        or not isinstance(index_row, dict)
+        or index_row.get("id") != doc_id
+        or index_row.get("publication_generation") != generation
+    ):
+        raise RuntimeError(f"publication journal is invalid: {path.name}")
+    return journal
+
+
+def _reconcile_publication_locked(doc_id: str) -> None:
+    path = _publication_journal_path(doc_id)
+    if not path.exists():
+        return
+    journal = _read_publication_journal(path)
+    if journal["doc_id"] != doc_id:
+        raise RuntimeError(f"publication journal document mismatch: {path.name}")
+    with _index_lock:
+        _write_meta_file(journal["meta"])
+        items = _load_publication_index(
+            allow_missing=not journal["index_existed"]
+        )
+        _upsert_index_row(items, journal["index_row"])
+        _save_index(items)
+        path.unlink()
+
+
+def reconcile_pending_publications() -> None:
+    """Complete durable metadata/index publications left by interrupted writes."""
+    directory = _publication_journal_dir()
+    if not directory.exists():
+        return
+    for path in sorted(directory.glob("*.json")):
+        journal = _read_publication_journal(path)
+        doc_id = journal["doc_id"]
+        if path != _publication_journal_path(doc_id):
+            raise RuntimeError(f"publication journal path is invalid: {path.name}")
+        with _doc_lock(doc_id):
+            _reconcile_publication_locked(doc_id)
+
+
+def load_meta(doc_id: str) -> dict | None:
+    with _doc_lock(doc_id):
+        _reconcile_publication_locked(doc_id)
+        p = meta_path(doc_id)
+        if not p.exists():
+            return None
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return None
 
 
 def _current_artifact_path(doc_id: str, filename: str) -> Path | None:
@@ -182,19 +274,38 @@ def _current_artifact_path(doc_id: str, filename: str) -> Path | None:
 def save_meta(meta: dict) -> None:
     doc_id = meta["id"]
     with _doc_lock(doc_id):
-        doc_dir(doc_id).mkdir(parents=True, exist_ok=True)
-        _write_meta_file(meta)
+        _reconcile_publication_locked(doc_id)
+        if not doc_dir(doc_id).is_dir():
+            raise RuntimeError(f"document no longer exists: {doc_id}")
+        target_meta = dict(meta)
+        target_meta["updated_at"] = _now()
+        generation = uuid.uuid4().hex
+        target_meta["publication_generation"] = generation
+        target_row = _index_row(target_meta)
         with _index_lock:
-            items = _load_index()
-            found = False
-            for i, it in enumerate(items):
-                if it.get("id") == doc_id:
-                    items[i] = _index_row(meta)
-                    found = True
-                    break
-            if not found:
-                items.insert(0, _index_row(meta))
+            index_existed = INDEX_FILE.exists()
+            items = _load_publication_index(allow_missing=True)
+            _upsert_index_row(items, target_row)
+            journal_path = _publication_journal_path(doc_id)
+            _atomic_write_text(
+                journal_path,
+                json.dumps(
+                    {
+                        "doc_id": doc_id,
+                        "generation": generation,
+                        "index_existed": index_existed,
+                        "meta": target_meta,
+                        "index_row": target_row,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+            )
+            _write_meta_file(target_meta)
             _save_index(items)
+            journal_path.unlink()
+        meta.clear()
+        meta.update(target_meta)
 
 
 def _index_row(meta: dict) -> dict:
@@ -215,6 +326,7 @@ def _index_row(meta: dict) -> dict:
         "duration_sec": meta.get("duration_sec"),
         "engine": meta.get("engine"),
         "visibility_migrated": True,
+        "publication_generation": meta.get("publication_generation"),
     }
     if meta.get("current_version_id"):
         row["current_version_id"] = meta["current_version_id"]
@@ -245,6 +357,7 @@ def _load_visibility_index_locked() -> list[dict]:
 
 def migrate_index_visibility() -> None:
     """Upgrade pre-versioning index rows once, then persist the snapshot source."""
+    reconcile_pending_publications()
     with _index_lock:
         items = _load_visibility_index_locked()
         changed = False
@@ -303,6 +416,7 @@ def list_docs(
     page: int = 1,
     page_size: int = 50,
 ) -> tuple[list[dict], int]:
+    reconcile_pending_publications()
     with _index_lock:
         items = _load_index()
     if status and status != "all":
@@ -510,15 +624,17 @@ def set_current_version(
 
 
 def delete_doc(doc_id: str) -> bool:
-    with _index_lock:
-        items = _load_index()
-        items = [x for x in items if x.get("id") != doc_id]
-        _save_index(items)
-    d = doc_dir(doc_id)
-    if d.exists():
-        shutil.rmtree(d, ignore_errors=True)
-        return True
-    return False
+    with _doc_lock(doc_id):
+        _reconcile_publication_locked(doc_id)
+        with _index_lock:
+            items = _load_publication_index(allow_missing=False)
+            items = [x for x in items if x.get("id") != doc_id]
+            _save_index(items)
+        d = doc_dir(doc_id)
+        if d.exists():
+            shutil.rmtree(d, ignore_errors=True)
+            return True
+        return False
 
 
 def original_file(doc_id: str) -> Path | None:

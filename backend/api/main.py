@@ -65,6 +65,15 @@ app.include_router(favorites.router, prefix="/api")
 app.include_router(docs.router, prefix="/api")
 
 
+def reconcile_document_publications() -> None:
+    from services import document_store
+
+    document_store.reconcile_pending_publications()
+
+
+app.router.add_event_handler("startup", reconcile_document_publications)
+
+
 @app.get("/api/health", response_model=HealthResponse)
 def health():
     return HealthResponse(status="ok")

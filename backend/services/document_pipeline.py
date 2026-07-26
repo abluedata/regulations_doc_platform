@@ -54,7 +54,7 @@ from services.document_store import (
     version_artifacts_match,
     write_version_artifacts,
 )
-from services.visibility import ensure_visibility_mapping
+from services.visibility import ensure_visibility_mapping, response_body
 
 # MinerU 适配服务（默认 8003；见 mineru_service/）
 MINERU_URL = os.environ.get("MINERU_URL", "http://127.0.0.1:8003").rstrip("/")
@@ -864,6 +864,10 @@ def _index_chunks(
 
     texts = [c["content"] for c in chunks]
     embeddings = _embed(texts)
+    if not isinstance(embeddings, list) or len(embeddings) != len(chunks):
+        raise RuntimeError(
+            "embedding result count does not match document chunk count"
+        )
 
     batch_size = 50
     for i in range(0, len(chunks), batch_size):
@@ -896,7 +900,24 @@ def _index_chunks(
             bulk_body += json.dumps(action, ensure_ascii=False) + "\n"
             bulk_body += json.dumps(doc, ensure_ascii=False) + "\n"
         if bulk_body:
-            es.bulk(body=bulk_body, refresh=True)
+            result = response_body(
+                es.bulk(body=bulk_body, refresh=True),
+                operation="document chunk bulk indexing",
+            )
+            items = result.get("items")
+            if result.get("errors") is not False or not isinstance(items, list):
+                raise RuntimeError("document chunk bulk indexing did not complete")
+            if len(items) != len(batch_c):
+                raise RuntimeError("document chunk bulk item count is incomplete")
+            for item in items:
+                operation = item.get("index") if isinstance(item, dict) else None
+                status = operation.get("status") if isinstance(operation, dict) else None
+                if (
+                    type(status) is not int
+                    or not 200 <= status < 300
+                    or operation.get("error") is not None
+                ):
+                    raise RuntimeError("document chunk bulk item failed")
 
 
 def delete_doc_from_index(doc_id: str) -> None:

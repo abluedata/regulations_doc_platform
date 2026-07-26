@@ -410,6 +410,181 @@ class TestDocumentVersions(unittest.TestCase):
         self.assertEqual("chunking", meta["status"])
         self.assertEqual(version_id, meta.get("current_version_id"))
 
+    def test_failed_index_publication_leaves_journal_and_reads_fail_closed(self):
+        source = self._create_doc()
+        digest = store.source_sha256(source)
+        old_id = store.compute_version_id(digest, "schema-v1", {"build": "old"})
+        new_id = store.compute_version_id(digest, "schema-v1", {"build": "new"})
+        for version_id, preview in ((old_id, "old preview"), (new_id, "new preview")):
+            store.write_version_artifacts(
+                "doc-version-test",
+                version_id,
+                {"version": version_id},
+                preview,
+                {
+                    "version_id": version_id,
+                    "source_sha256": digest,
+                    "parser_schema_version": "schema-v1",
+                    "parse_config": {},
+                    "status": "ready",
+                },
+            )
+        store.set_current_version(
+            "doc-version-test", old_id, indexed_version_id=old_id
+        )
+
+        with mock.patch.object(
+            store, "_save_index", side_effect=OSError("index write failed")
+        ):
+            with self.assertRaises(OSError):
+                store.set_current_version(
+                    "doc-version-test", new_id, indexed_version_id=new_id
+                )
+
+            raw_meta = json.loads(store.meta_path("doc-version-test").read_text("utf-8"))
+            raw_index = json.loads(store.INDEX_FILE.read_text("utf-8"))[0]
+            self.assertEqual(new_id, raw_meta["current_version_id"])
+            self.assertEqual(old_id, raw_index["indexed_version_id"])
+            self.assertTrue(
+                list((store.INDEX_FILE.parent / "publication_journal").glob("*.json"))
+            )
+            with self.assertRaises(OSError):
+                store.load_preview_md("doc-version-test")
+
+    def test_pending_publication_reconciles_after_simulated_restart(self):
+        source = self._create_doc()
+        digest = store.source_sha256(source)
+        old_id = store.compute_version_id(digest, "schema-v1", {"build": "old"})
+        new_id = store.compute_version_id(digest, "schema-v1", {"build": "new"})
+        for version_id, preview in ((old_id, "old preview"), (new_id, "new preview")):
+            store.write_version_artifacts(
+                "doc-version-test",
+                version_id,
+                {"version": version_id},
+                preview,
+                {
+                    "version_id": version_id,
+                    "source_sha256": digest,
+                    "parser_schema_version": "schema-v1",
+                    "parse_config": {},
+                    "status": "ready",
+                },
+            )
+        store.set_current_version(
+            "doc-version-test", old_id, indexed_version_id=old_id
+        )
+        with mock.patch.object(
+            store, "_save_index", side_effect=OSError("index write failed")
+        ):
+            with self.assertRaises(OSError):
+                store.set_current_version(
+                    "doc-version-test", new_id, indexed_version_id=new_id
+                )
+
+        with store._doc_locks_guard:
+            store._doc_locks.clear()
+        self._require_store_api("reconcile_pending_publications")
+        store.reconcile_pending_publications()
+
+        self.assertEqual("new preview", store.load_preview_md("doc-version-test"))
+        self.assertEqual(
+            ([f"doc-version-test:{new_id}"], ["doc-version-test"], []),
+            store.index_visibility_snapshot(),
+        )
+        self.assertEqual(
+            [],
+            list((store.INDEX_FILE.parent / "publication_journal").glob("*.json")),
+        )
+
+    def test_backend_startup_reconciles_pending_publications(self):
+        from api import main
+
+        self.assertTrue(
+            hasattr(main, "reconcile_document_publications"),
+            "backend startup must reconcile durable publication journals",
+        )
+        self.assertIn(
+            main.reconcile_document_publications,
+            main.app.router.on_startup,
+        )
+        with mock.patch.object(store, "reconcile_pending_publications") as reconcile:
+            main.reconcile_document_publications()
+        reconcile.assert_called_once_with()
+
+    def test_pending_publication_fails_closed_on_malformed_existing_index(self):
+        source = self._create_doc()
+        digest = store.source_sha256(source)
+        version_id = store.compute_version_id(digest, "schema-v1", {"build": "new"})
+        store.write_version_artifacts(
+            "doc-version-test",
+            version_id,
+            {"version": version_id},
+            "new preview",
+            {
+                "version_id": version_id,
+                "source_sha256": digest,
+                "parser_schema_version": "schema-v1",
+                "parse_config": {},
+                "status": "ready",
+            },
+        )
+        with mock.patch.object(
+            store, "_save_index", side_effect=OSError("index write failed")
+        ):
+            with self.assertRaises(OSError):
+                store.set_current_version(
+                    "doc-version-test", version_id, indexed_version_id=version_id
+                )
+
+        journal = next(
+            (store.INDEX_FILE.parent / "publication_journal").glob("*.json")
+        )
+        store.INDEX_FILE.write_text("{malformed", encoding="utf-8")
+
+        with self.assertRaises(RuntimeError):
+            store.reconcile_pending_publications()
+
+        self.assertEqual("{malformed", store.INDEX_FILE.read_text("utf-8"))
+        self.assertTrue(journal.is_file())
+
+    def test_delete_resolves_pending_publication_without_resurrection(self):
+        source = self._create_doc()
+        digest = store.source_sha256(source)
+        version_id = store.compute_version_id(digest, "schema-v1", {"build": "new"})
+        store.write_version_artifacts(
+            "doc-version-test",
+            version_id,
+            {"version": version_id},
+            "new preview",
+            {
+                "version_id": version_id,
+                "source_sha256": digest,
+                "parser_schema_version": "schema-v1",
+                "parse_config": {},
+                "status": "ready",
+            },
+        )
+        with mock.patch.object(
+            store, "_save_index", side_effect=OSError("index write failed")
+        ):
+            with self.assertRaises(OSError):
+                store.set_current_version(
+                    "doc-version-test", version_id, indexed_version_id=version_id
+                )
+
+        stale_meta = json.loads(
+            store.meta_path("doc-version-test").read_text("utf-8")
+        )
+        self.assertTrue(store.delete_doc("doc-version-test"))
+        with self.assertRaises(RuntimeError):
+            store.save_meta(stale_meta)
+        self.assertEqual(([], [], []), store.index_visibility_snapshot())
+        self.assertFalse(store.doc_dir("doc-version-test").exists())
+        self.assertEqual(
+            [],
+            list((store.INDEX_FILE.parent / "publication_journal").glob("*.json")),
+        )
+
     def test_search_hides_staged_chunks_until_version_publication(self):
         from services import search
 
@@ -923,6 +1098,10 @@ class TestDocumentVersions(unittest.TestCase):
 
             def bulk(self, *, body, refresh):
                 calls.append("bulk")
+                return {
+                    "errors": False,
+                    "items": [{"index": {"status": 201}}],
+                }
 
         fake_module = types.SimpleNamespace(Elasticsearch=FakeElasticsearch)
         chunks = [{
@@ -938,6 +1117,103 @@ class TestDocumentVersions(unittest.TestCase):
 
         self.assertIn("put_mapping", calls)
         self.assertLess(calls.index("put_mapping"), calls.index("bulk"))
+
+    def test_index_chunks_rejects_short_embedding_response_before_bulk(self):
+        bulk_called = False
+
+        class FakeIndices:
+            def exists(self, *, index):
+                return True
+
+            def get_mapping(self, *, index):
+                return {
+                    index: {
+                        "mappings": {
+                            "properties": {
+                                "visibility_key_v2": {"type": "keyword"}
+                            }
+                        }
+                    }
+                }
+
+        class FakeElasticsearch:
+            def __init__(self, *args, **kwargs):
+                self.indices = FakeIndices()
+
+            def bulk(self, **kwargs):
+                nonlocal bulk_called
+                bulk_called = True
+
+        fake_module = types.SimpleNamespace(Elasticsearch=FakeElasticsearch)
+        with mock.patch.dict(sys.modules, {"elasticsearch": fake_module}), \
+             mock.patch.object(pipeline, "_embed", return_value=[]):
+            with self.assertRaisesRegex(RuntimeError, "embedding.*count"):
+                pipeline._index_chunks(
+                    "doc-version-test",
+                    "2" * 64,
+                    {"filename": "f.pdf"},
+                    [{"doc_id": "doc-version-test", "chunk_id": 1, "content": "x"}],
+                )
+
+        self.assertFalse(bulk_called)
+
+    def test_index_chunks_rejects_incomplete_object_bulk_responses(self):
+        class ObjectResponse:
+            def __init__(self, body):
+                self.body = body
+
+        class FakeIndices:
+            def exists(self, *, index):
+                return True
+
+            def get_mapping(self, *, index):
+                return ObjectResponse({
+                    index: {
+                        "mappings": {
+                            "properties": {
+                                "visibility_key_v2": {"type": "keyword"}
+                            }
+                        }
+                    }
+                })
+
+        cases = {
+            "item_error": {
+                "errors": True,
+                "items": [{"index": {"status": 500, "error": {"type": "boom"}}}],
+            },
+            "count_mismatch": {
+                "errors": False,
+                "items": [],
+            },
+            "malformed": {
+                "errors": False,
+                "items": [{"index": {"status": "201"}}],
+            },
+        }
+        for name, response_body in cases.items():
+            with self.subTest(name=name):
+                class FakeElasticsearch:
+                    def __init__(self, *args, **kwargs):
+                        self.indices = FakeIndices()
+
+                    def bulk(self, **kwargs):
+                        return ObjectResponse(response_body)
+
+                fake_module = types.SimpleNamespace(Elasticsearch=FakeElasticsearch)
+                with mock.patch.dict(sys.modules, {"elasticsearch": fake_module}), \
+                     mock.patch.object(pipeline, "_embed", return_value=[[0.1]]):
+                    with self.assertRaisesRegex(RuntimeError, "bulk"):
+                        pipeline._index_chunks(
+                            "doc-version-test",
+                            "3" * 64,
+                            {"filename": "f.pdf"},
+                            [{
+                                "doc_id": "doc-version-test",
+                                "chunk_id": 1,
+                                "content": "x",
+                            }],
+                        )
 
     def test_index_chunks_rejects_incompatible_existing_v2_mapping_before_bulk(self):
         bulk_called = False

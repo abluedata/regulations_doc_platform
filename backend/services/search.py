@@ -41,6 +41,7 @@ from services.utils import (
     normalize_table_fields,
 )
 from services.document_store import index_visibility_snapshot
+from services.visibility import ensure_visibility_mapping, response_body
 from elasticsearch import Elasticsearch
 
 logger = logging.getLogger(__name__)
@@ -193,18 +194,25 @@ def route_decision(query: str, local_context: str) -> str:
 
 # ─── 本地搜索 (BM25 + Vector) ─────────────────────────────
 
-def _visibility_filter(active_keys: list[str], versioned_doc_ids: list[str]) -> dict:
-    legacy_must_not: list[dict] = [
-        {"exists": {"field": "visibility_key_v2"}},
-        {"exists": {"field": "document_version_id"}},
-    ]
-    if versioned_doc_ids:
-        legacy_must_not.append({"terms": {"doc_id": versioned_doc_ids}})
-    visibility_should: list[dict] = [
-        {"bool": {"must_not": legacy_must_not}}
-    ]
+def _visibility_filter(
+    active_keys: list[str], legacy_document_ids: list[str]
+) -> dict:
+    if not active_keys and not legacy_document_ids:
+        return {"match_none": {}}
+
+    visibility_should: list[dict] = []
     if active_keys:
-        visibility_should.insert(0, {"terms": {"visibility_key_v2": active_keys}})
+        visibility_should.append({"terms": {"visibility_key_v2": active_keys}})
+    if legacy_document_ids:
+        visibility_should.append({
+            "bool": {
+                "filter": [{"terms": {"doc_id": legacy_document_ids}}],
+                "must_not": [
+                    {"exists": {"field": "visibility_key_v2"}},
+                    {"exists": {"field": "document_version_id"}},
+                ],
+            }
+        })
     return {
         "bool": {
             "should": visibility_should,
@@ -220,10 +228,7 @@ def _ensure_visibility_v2(es) -> None:
     with _visibility_v2_lock:
         if _visibility_v2_ready:
             return
-        es.indices.put_mapping(
-            index=INDEX_NAME,
-            properties={"visibility_key_v2": {"type": "keyword"}},
-        )
+        ensure_visibility_mapping(es, INDEX_NAME)
         result = es.update_by_query(
             index=INDEX_NAME,
             body={
@@ -250,8 +255,26 @@ def _ensure_visibility_v2(es) -> None:
             conflicts="proceed",
             refresh=True,
         )
-        if isinstance(result, dict) and (
-            result.get("timed_out") or result.get("failures")
+        result_body = response_body(
+            result, operation="visibility key backfill"
+        )
+        required_counters = (
+            "total",
+            "updated",
+            "noops",
+            "version_conflicts",
+        )
+        if (
+            result_body.get("timed_out") is not False
+            or result_body.get("failures") != []
+            or any(
+                type(result_body.get(name)) is not int
+                or result_body[name] < 0
+                for name in required_counters
+            )
+            or result_body.get("version_conflicts") != 0
+            or result_body.get("updated", -1) + result_body.get("noops", -1)
+            != result_body.get("total")
         ):
             raise RuntimeError("visibility key backfill did not complete")
         _visibility_v2_ready = True
@@ -270,9 +293,11 @@ def search_local(query: str, k: int = None) -> list[dict]:
         q_emb = None
 
     try:
-        active_keys, versioned_doc_ids = index_visibility_snapshot()
+        active_keys, _versioned_doc_ids, legacy_document_ids = (
+            index_visibility_snapshot()
+        )
         _ensure_visibility_v2(es)
-        visibility_filter = _visibility_filter(active_keys, versioned_doc_ids)
+        visibility_filter = _visibility_filter(active_keys, legacy_document_ids)
     except Exception:
         visibility_filter = {"match_none": {}}
 

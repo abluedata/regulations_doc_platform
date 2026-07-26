@@ -271,14 +271,15 @@ def migrate_index_visibility() -> None:
             _save_index(items)
 
 
-def index_visibility_snapshot() -> tuple[list[str], list[str]]:
-    """Return active visibility keys and doc IDs from the atomic list index."""
+def index_visibility_snapshot() -> tuple[list[str], list[str], list[str]]:
+    """Return active keys plus versioned and legacy IDs from the list index."""
     migrate_index_visibility()
     with _index_lock:
         items = _load_visibility_index_locked()
 
     active_keys: list[str] = []
     versioned_doc_ids: list[str] = []
+    legacy_doc_ids: list[str] = []
     for item in items:
         doc_id = item.get("id")
         version_id = item.get("indexed_version_id")
@@ -287,7 +288,13 @@ def index_visibility_snapshot() -> tuple[list[str], list[str]]:
         if version_id:
             active_keys.append(f"{doc_id}:{version_id}")
             versioned_doc_ids.append(doc_id)
-    return sorted(active_keys), sorted(versioned_doc_ids)
+        else:
+            legacy_doc_ids.append(doc_id)
+    return (
+        sorted(active_keys),
+        sorted(versioned_doc_ids),
+        sorted(legacy_doc_ids),
+    )
 
 
 def list_docs(

@@ -54,6 +54,7 @@ from services.document_store import (
     version_artifacts_match,
     write_version_artifacts,
 )
+from services.visibility import ensure_visibility_mapping
 
 # MinerU 适配服务（默认 8003；见 mineru_service/）
 MINERU_URL = os.environ.get("MINERU_URL", "http://127.0.0.1:8003").rstrip("/")
@@ -852,6 +853,8 @@ def _index_chunks(
                 },
             },
         )
+
+    ensure_visibility_mapping(es, INDEX_NAME)
 
     filename = meta.get("filename") or ""
     file_type = meta.get("ext") or ""

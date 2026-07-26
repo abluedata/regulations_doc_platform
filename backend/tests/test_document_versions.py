@@ -6,8 +6,10 @@ import contextlib
 import io
 import json
 import re
+import sys
 import tempfile
 import threading
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -608,8 +610,18 @@ class TestDocumentVersions(unittest.TestCase):
                     },
                 ]
 
+            def get_mapping(self, *, index):
+                return {
+                    index: {
+                        "mappings": {
+                            "properties": {"visibility_key": {"type": "text"}}
+                        }
+                    }
+                }
+
             def put_mapping(self, **kwargs):
                 self.mapping_calls.append(kwargs)
+                return {"acknowledged": True}
 
             def update_by_query(self, **kwargs):
                 self.backfill_calls.append(kwargs)
@@ -617,6 +629,14 @@ class TestDocumentVersions(unittest.TestCase):
                     record["visibility_key_v2"] = (
                         f"{record['doc_id']}:{record['document_version_id']}"
                     )
+                return {
+                    "timed_out": False,
+                    "failures": [],
+                    "version_conflicts": 0,
+                    "total": len(self.records),
+                    "updated": len(self.records),
+                    "noops": 0,
+                }
 
             def search(self, *, index, body):
                 captured_bodies.append(body)
@@ -635,7 +655,7 @@ class TestDocumentVersions(unittest.TestCase):
              mock.patch.object(
                  search,
                  "index_visibility_snapshot",
-                 return_value=([f"{doc_id}:{active_id}"], [doc_id]),
+                 return_value=([f"{doc_id}:{active_id}"], [doc_id], []),
              ), mock.patch.object(
                  search, "_visibility_v2_ready", False, create=True
              ):
@@ -662,11 +682,29 @@ class TestDocumentVersions(unittest.TestCase):
             def __init__(self):
                 self.indices = self
 
+            def get_mapping(self, *, index):
+                return {
+                    index: {
+                        "mappings": {
+                            "properties": {
+                                "visibility_key_v2": {"type": "keyword"}
+                            }
+                        }
+                    }
+                }
+
             def put_mapping(self, **kwargs):
                 return None
 
             def update_by_query(self, **kwargs):
-                return None
+                return {
+                    "timed_out": False,
+                    "failures": [],
+                    "version_conflicts": 0,
+                    "total": 0,
+                    "updated": 0,
+                    "noops": 0,
+                }
 
             def search(self, *, index, body):
                 captured_bodies.append(body)
@@ -677,7 +715,7 @@ class TestDocumentVersions(unittest.TestCase):
              mock.patch.object(
                  search,
                  "index_visibility_snapshot",
-                 return_value=(active_keys, doc_ids),
+                 return_value=(active_keys, doc_ids, []),
              ), mock.patch.object(
                  search, "_visibility_v2_ready", False, create=True
              ):
@@ -700,14 +738,32 @@ class TestDocumentVersions(unittest.TestCase):
                 self.failure_mode = failure_mode
                 self.captured_bodies = []
 
+            def get_mapping(self, *, index):
+                return {index: {"mappings": {"properties": {}}}}
+
             def put_mapping(self, **kwargs):
                 if self.failure_mode == "mapping":
                     raise RuntimeError("mapping failed")
+                return {"acknowledged": True}
 
             def update_by_query(self, **kwargs):
                 if self.failure_mode == "backfill":
-                    return {"failures": [{"cause": "script failed"}]}
-                return {"failures": []}
+                    return {
+                        "timed_out": False,
+                        "failures": [{"cause": "script failed"}],
+                        "version_conflicts": 0,
+                        "total": 1,
+                        "updated": 0,
+                        "noops": 0,
+                    }
+                return {
+                    "timed_out": False,
+                    "failures": [],
+                    "version_conflicts": 0,
+                    "total": 0,
+                    "updated": 0,
+                    "noops": 0,
+                }
 
             def search(self, *, index, body):
                 self.captured_bodies.append(body)
@@ -754,7 +810,7 @@ class TestDocumentVersions(unittest.TestCase):
             snapshot = store.index_visibility_snapshot()
 
         self.assertFalse(uploads.scanned, "visibility snapshot must not scan meta.json")
-        self.assertEqual(([f"{doc_id}:{version_id}"], [doc_id]), snapshot)
+        self.assertEqual(([f"{doc_id}:{version_id}"], [doc_id], []), snapshot)
 
     def test_legacy_docs_index_row_is_migrated_once_from_current_metadata(self):
         doc_id = "doc-version-test"
@@ -777,7 +833,10 @@ class TestDocumentVersions(unittest.TestCase):
         migrated = json.loads(store.INDEX_FILE.read_text("utf-8"))[0]
         self.assertEqual(version_id, migrated["current_version_id"])
         self.assertEqual(version_id, migrated["indexed_version_id"])
-        self.assertEqual(([f"{doc_id}:{version_id}"], [doc_id]), store.index_visibility_snapshot())
+        self.assertEqual(
+            ([f"{doc_id}:{version_id}"], [doc_id], []),
+            store.index_visibility_snapshot(),
+        )
 
     def test_missing_visibility_index_with_existing_uploads_fails_closed(self):
         self._create_doc()
@@ -837,6 +896,258 @@ class TestDocumentVersions(unittest.TestCase):
 
         self.assertEqual([], results)
         self.assertIn("match_none", json.dumps(captured_bodies[0]))
+
+    def test_index_chunks_installs_v2_mapping_before_existing_index_bulk(self):
+        calls = []
+
+        class ObjectResponse:
+            def __init__(self, body):
+                self.body = body
+
+        class FakeIndices:
+            def exists(self, *, index):
+                calls.append("exists")
+                return True
+
+            def get_mapping(self, *, index):
+                calls.append("get_mapping")
+                return ObjectResponse({index: {"mappings": {"properties": {}}}})
+
+            def put_mapping(self, **kwargs):
+                calls.append("put_mapping")
+                return ObjectResponse({"acknowledged": True})
+
+        class FakeElasticsearch:
+            def __init__(self, *args, **kwargs):
+                self.indices = FakeIndices()
+
+            def bulk(self, *, body, refresh):
+                calls.append("bulk")
+
+        fake_module = types.SimpleNamespace(Elasticsearch=FakeElasticsearch)
+        chunks = [{
+            "doc_id": "doc-version-test",
+            "chunk_id": 1,
+            "content": "content",
+        }]
+        with mock.patch.dict(sys.modules, {"elasticsearch": fake_module}), \
+             mock.patch.object(pipeline, "_embed", return_value=[[0.1]]):
+            pipeline._index_chunks(
+                "doc-version-test", "e" * 64, {"filename": "f.pdf"}, chunks
+            )
+
+        self.assertIn("put_mapping", calls)
+        self.assertLess(calls.index("put_mapping"), calls.index("bulk"))
+
+    def test_index_chunks_rejects_incompatible_existing_v2_mapping_before_bulk(self):
+        bulk_called = False
+
+        class ObjectResponse:
+            def __init__(self, body):
+                self.body = body
+
+        class FakeIndices:
+            def exists(self, *, index):
+                return True
+
+            def get_mapping(self, *, index):
+                return ObjectResponse({
+                    index: {
+                        "mappings": {
+                            "properties": {"visibility_key_v2": {"type": "text"}}
+                        }
+                    }
+                })
+
+        class FakeElasticsearch:
+            def __init__(self, *args, **kwargs):
+                self.indices = FakeIndices()
+
+            def bulk(self, **kwargs):
+                nonlocal bulk_called
+                bulk_called = True
+
+        fake_module = types.SimpleNamespace(Elasticsearch=FakeElasticsearch)
+        with mock.patch.dict(sys.modules, {"elasticsearch": fake_module}), \
+             mock.patch.object(pipeline, "_embed", return_value=[[0.1]]):
+            with self.assertRaisesRegex(RuntimeError, "visibility_key_v2.*keyword"):
+                pipeline._index_chunks(
+                    "doc-version-test",
+                    "f" * 64,
+                    {"filename": "f.pdf"},
+                    [{"doc_id": "doc-version-test", "chunk_id": 1, "content": "x"}],
+                )
+        self.assertFalse(bulk_called)
+
+    def test_index_chunks_requires_acknowledged_mapping_before_embedding(self):
+        bulk_called = False
+
+        class ObjectResponse:
+            def __init__(self, body):
+                self.body = body
+
+        class FakeIndices:
+            def exists(self, *, index):
+                return True
+
+            def get_mapping(self, *, index):
+                return ObjectResponse({index: {"mappings": {"properties": {}}}})
+
+            def put_mapping(self, **kwargs):
+                return ObjectResponse({"acknowledged": False})
+
+        class FakeElasticsearch:
+            def __init__(self, *args, **kwargs):
+                self.indices = FakeIndices()
+
+            def bulk(self, **kwargs):
+                nonlocal bulk_called
+                bulk_called = True
+
+        embed = mock.Mock(return_value=[[0.1]])
+        fake_module = types.SimpleNamespace(Elasticsearch=FakeElasticsearch)
+        with mock.patch.dict(sys.modules, {"elasticsearch": fake_module}), \
+             mock.patch.object(pipeline, "_embed", embed):
+            with self.assertRaisesRegex(RuntimeError, "acknowledged"):
+                pipeline._index_chunks(
+                    "doc-version-test",
+                    "1" * 64,
+                    {"filename": "f.pdf"},
+                    [{"doc_id": "doc-version-test", "chunk_id": 1, "content": "x"}],
+                )
+
+        embed.assert_not_called()
+        self.assertFalse(bulk_called)
+
+    def test_object_response_partial_backfill_does_not_set_ready_and_retries(self):
+        from services import search
+
+        class ObjectResponse:
+            def __init__(self, body):
+                self.body = body
+
+        class FakeIndices:
+            def get_mapping(self, *, index):
+                return ObjectResponse({index: {"mappings": {"properties": {}}}})
+
+            def put_mapping(self, **kwargs):
+                return ObjectResponse({"acknowledged": True})
+
+        class FakeElasticsearch:
+            def __init__(self):
+                self.indices = FakeIndices()
+                self.calls = 0
+
+            def update_by_query(self, **kwargs):
+                self.calls += 1
+                if self.calls == 1:
+                    return ObjectResponse({
+                        "timed_out": False,
+                        "failures": [],
+                        "version_conflicts": 1,
+                        "total": 2,
+                        "updated": 1,
+                        "noops": 0,
+                    })
+                return ObjectResponse({
+                    "timed_out": False,
+                    "failures": [],
+                    "version_conflicts": 0,
+                    "total": 2,
+                    "updated": 2,
+                    "noops": 0,
+                })
+
+        fake_es = FakeElasticsearch()
+        with mock.patch.object(search, "_visibility_v2_ready", False):
+            with self.assertRaises(RuntimeError):
+                search._ensure_visibility_v2(fake_es)
+            self.assertFalse(search._visibility_v2_ready)
+            search._ensure_visibility_v2(fake_es)
+            self.assertTrue(search._visibility_v2_ready)
+        self.assertEqual(2, fake_es.calls)
+
+    def test_malformed_backfill_counters_do_not_set_ready(self):
+        from services import search
+
+        class FakeIndices:
+            def get_mapping(self, *, index):
+                return {
+                    index: {
+                        "mappings": {
+                            "properties": {
+                                "visibility_key_v2": {"type": "keyword"}
+                            }
+                        }
+                    }
+                }
+
+        invalid_counters = (
+            {"total": -1, "updated": -1, "noops": 0, "version_conflicts": 0},
+            {"total": True, "updated": True, "noops": 0, "version_conflicts": 0},
+        )
+        for counters in invalid_counters:
+            with self.subTest(counters=counters):
+                fake_es = mock.Mock()
+                fake_es.indices = FakeIndices()
+                fake_es.update_by_query.return_value = {
+                    "timed_out": False,
+                    "failures": [],
+                    **counters,
+                }
+                with mock.patch.object(search, "_visibility_v2_ready", False):
+                    with self.assertRaises(RuntimeError):
+                        search._ensure_visibility_v2(fake_es)
+                    self.assertFalse(search._visibility_v2_ready)
+
+    def test_legacy_filter_excludes_deleted_residual_chunks(self):
+        from services import search
+
+        self._create_doc(doc_id="kept-legacy")
+        captured = []
+
+        class FakeElasticsearch:
+            def search(self, *, index, body):
+                captured.append(body)
+                serialized = json.dumps(body)
+                if "visibility_key_v2" in serialized and "deleted-doc" not in serialized:
+                    return {"hits": {"hits": []}}
+                return {"hits": {"hits": [{
+                    "_source": {
+                        "doc_id": "deleted-doc",
+                        "chunk_id": 1,
+                        "content": "deleted residual",
+                    }
+                }]}}
+
+        with mock.patch.object(search, "get_es", return_value=FakeElasticsearch()), \
+             mock.patch.object(search, "get_embeddings", return_value=[None]), \
+             mock.patch.object(search, "_visibility_v2_ready", True):
+            results = search.search_local("query", k=2)
+
+        self.assertEqual([], results)
+        self.assertIn("kept-legacy", json.dumps(captured[0]))
+
+    def test_valid_empty_installation_searches_match_none(self):
+        from services import search
+
+        store.INDEX_FILE.write_text("[]", encoding="utf-8")
+        captured = []
+
+        class FakeElasticsearch:
+            def search(self, *, index, body):
+                captured.append(body)
+                if "match_none" in json.dumps(body):
+                    return {"hits": {"hits": []}}
+                return {"hits": {"hits": [{"_source": {"content": "orphan"}}]}}
+
+        with mock.patch.object(search, "get_es", return_value=FakeElasticsearch()), \
+             mock.patch.object(search, "get_embeddings", return_value=[None]), \
+             mock.patch.object(search, "_visibility_v2_ready", True):
+            results = search.search_local("query", k=2)
+
+        self.assertEqual([], results)
+        self.assertIn("match_none", json.dumps(captured[0]))
 
 
 if __name__ == "__main__":

@@ -45,11 +45,13 @@ from services.utils import (
     promote_raw_blocks,
 )
 from services.document_store import (
+    compute_version_id,
     load_meta,
     original_file,
-    save_ir,
-    save_preview_md,
+    set_current_version,
+    source_sha256,
     update_status,
+    write_version_artifacts,
 )
 
 # MinerU 适配服务（默认 8003；见 mineru_service/）
@@ -60,8 +62,18 @@ MINERU_FALLBACK = os.environ.get("MINERU_FALLBACK", "true").lower() in (
     "true",
     "yes",
 )
+PARSER_SCHEMA_VERSION = "1"
 
 _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="doc-parse")
+
+
+def current_parse_config() -> dict[str, Any]:
+    return {
+        "chunk_overlap": CHUNK_OVERLAP,
+        "chunk_size": CHUNK_SIZE,
+        "mineru_fallback": MINERU_FALLBACK,
+        "mineru_url": MINERU_URL,
+    }
 
 
 def enqueue_parse(doc_id: str) -> None:
@@ -80,6 +92,12 @@ def _run_pipeline(doc_id: str) -> None:
         if not src or not src.exists():
             update_status(doc_id, "failed", error="原始文件不存在")
             return
+
+        source_digest = source_sha256(src)
+        parse_config = current_parse_config()
+        version_id = compute_version_id(
+            source_digest, PARSER_SCHEMA_VERSION, parse_config
+        )
 
         ext = (meta.get("ext") or src.suffix.lstrip(".")).lower()
 
@@ -112,9 +130,7 @@ def _run_pipeline(doc_id: str) -> None:
             pages=page_count,
             raw_blocks=raw_blocks,
         )
-        save_ir(doc_id, ir)
         preview_md = _ir_to_preview_md(ir)
-        save_preview_md(doc_id, preview_md)
 
         # ── chunking ──
         update_status(doc_id, "chunking")
@@ -128,6 +144,18 @@ def _run_pipeline(doc_id: str) -> None:
         _index_chunks(doc_id, meta, chunks)
 
         elapsed = round(time.time() - t0, 1)
+        manifest = {
+            "version_id": version_id,
+            "source_sha256": source_digest,
+            "parser_schema_version": PARSER_SCHEMA_VERSION,
+            "parse_config": parse_config,
+            "status": "ready",
+            "engine": engine,
+        }
+        try:
+            write_version_artifacts(doc_id, version_id, ir, preview_md, manifest)
+        except FileExistsError:
+            pass
         update_status(
             doc_id,
             "ready",
@@ -136,6 +164,8 @@ def _run_pipeline(doc_id: str) -> None:
             duration_sec=elapsed,
             engine=engine,
         )
+        if not set_current_version(doc_id, version_id):
+            raise RuntimeError("解析版本发布失败")
     except Exception as e:
         traceback.print_exc()
         update_status(

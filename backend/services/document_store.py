@@ -4,12 +4,13 @@
 布局：
   .data/uploads/{doc_id}/original.{ext}
   .data/uploads/{doc_id}/meta.json
-  .data/uploads/{doc_id}/ir.json
-  .data/uploads/{doc_id}/preview.md
+  .data/uploads/{doc_id}/versions/{version_id}/{ir.json,preview.md,manifest.json}
+  .data/uploads/{doc_id}/{ir.json,preview.md}  — 旧版兼容
   .data/docs_index.json   — 文档列表索引
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -49,6 +50,29 @@ def _now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _validate_version_id(version_id: str) -> None:
+    if not re.fullmatch(r"[0-9a-f]{64}", version_id):
+        raise ValueError("version_id must be a lowercase SHA-256 hex digest")
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temporary.write_text(content, encoding="utf-8")
+        temporary.replace(path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def _write_meta_file(meta: dict) -> None:
+    meta["updated_at"] = _now()
+    _atomic_write_text(
+        meta_path(meta["id"]), json.dumps(meta, ensure_ascii=False, indent=2)
+    )
+
+
 def _load_index() -> list[dict]:
     if not INDEX_FILE.exists():
         return []
@@ -60,8 +84,8 @@ def _load_index() -> list[dict]:
 
 def _save_index(items: list[dict]) -> None:
     INDEX_FILE.parent.mkdir(parents=True, exist_ok=True)
-    INDEX_FILE.write_text(
-        json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8"
+    _atomic_write_text(
+        INDEX_FILE, json.dumps(items, ensure_ascii=False, indent=2)
     )
 
 
@@ -81,6 +105,51 @@ def preview_path(doc_id: str) -> Path:
     return doc_dir(doc_id) / "preview.md"
 
 
+def version_dir(doc_id: str, version_id: str) -> Path:
+    _validate_version_id(version_id)
+    return doc_dir(doc_id) / "versions" / version_id
+
+
+def source_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def compute_version_id(
+    source_digest: str,
+    parser_schema_version: str,
+    parse_config: dict[str, Any] | None,
+) -> str:
+    """Return a stable, path-safe ID for source and parser inputs."""
+    if not re.fullmatch(r"[0-9a-fA-F]{64}", source_digest):
+        raise ValueError("source_digest must be a SHA-256 hex digest")
+    normalized_config = json.loads(
+        json.dumps(
+            parse_config or {},
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+    )
+    payload = {
+        "parse_config": normalized_config,
+        "parser_schema_version": str(parser_schema_version),
+        "source_sha256": source_digest.lower(),
+    }
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def load_meta(doc_id: str) -> dict | None:
     p = meta_path(doc_id)
     if not p.exists():
@@ -91,14 +160,23 @@ def load_meta(doc_id: str) -> dict | None:
         return None
 
 
+def _current_artifact_path(doc_id: str, filename: str) -> Path | None:
+    meta = load_meta(doc_id)
+    version_id = (meta or {}).get("current_version_id")
+    if not isinstance(version_id, str):
+        return None
+    try:
+        candidate = version_dir(doc_id, version_id) / filename
+    except ValueError:
+        return None
+    return candidate if candidate.is_file() else None
+
+
 def save_meta(meta: dict) -> None:
     doc_id = meta["id"]
     d = doc_dir(doc_id)
     d.mkdir(parents=True, exist_ok=True)
-    meta["updated_at"] = _now()
-    meta_path(doc_id).write_text(
-        json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    _write_meta_file(meta)
     with _lock:
         items = _load_index()
         found = False
@@ -228,13 +306,13 @@ def update_status(
 
 
 def save_ir(doc_id: str, ir: dict) -> None:
-    ir_path(doc_id).write_text(
-        json.dumps(ir, ensure_ascii=False, indent=2), encoding="utf-8"
+    _atomic_write_text(
+        ir_path(doc_id), json.dumps(ir, ensure_ascii=False, indent=2)
     )
 
 
 def load_ir(doc_id: str) -> dict | None:
-    p = ir_path(doc_id)
+    p = _current_artifact_path(doc_id, "ir.json") or ir_path(doc_id)
     if not p.exists():
         return None
     try:
@@ -244,14 +322,73 @@ def load_ir(doc_id: str) -> dict | None:
 
 
 def save_preview_md(doc_id: str, md: str) -> None:
-    preview_path(doc_id).write_text(md, encoding="utf-8")
+    _atomic_write_text(preview_path(doc_id), md)
 
 
 def load_preview_md(doc_id: str) -> str:
-    p = preview_path(doc_id)
+    p = _current_artifact_path(doc_id, "preview.md") or preview_path(doc_id)
     if p.exists():
         return p.read_text(encoding="utf-8")
     return ""
+
+
+def write_version_artifacts(
+    doc_id: str,
+    version_id: str,
+    ir: dict,
+    preview_md: str,
+    manifest: dict,
+) -> Path:
+    """Atomically create a complete immutable version directory."""
+    final_dir = version_dir(doc_id, version_id)
+    if manifest.get("version_id") != version_id:
+        raise ValueError("manifest version_id does not match directory version_id")
+    versions_dir = final_dir.parent
+    versions_dir.mkdir(parents=True, exist_ok=True)
+    if final_dir.exists():
+        raise FileExistsError(f"document version already exists: {version_id}")
+
+    temporary_dir = versions_dir / f".{version_id}.{uuid.uuid4().hex}.tmp"
+    temporary_dir.mkdir()
+    try:
+        (temporary_dir / "ir.json").write_text(
+            json.dumps(ir, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        (temporary_dir / "preview.md").write_text(preview_md, encoding="utf-8")
+        (temporary_dir / "manifest.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        temporary_dir.replace(final_dir)
+    except Exception:
+        if temporary_dir.exists():
+            shutil.rmtree(temporary_dir, ignore_errors=True)
+        raise
+    return final_dir
+
+
+def set_current_version(doc_id: str, version_id: str) -> bool:
+    """Publish a complete, successful version as the document's current version."""
+    try:
+        directory = version_dir(doc_id, version_id)
+    except ValueError:
+        return False
+    required = ("ir.json", "preview.md", "manifest.json")
+    if not all((directory / name).is_file() for name in required):
+        return False
+    try:
+        manifest = json.loads((directory / "manifest.json").read_text("utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return False
+    if manifest.get("version_id") != version_id or manifest.get("status") != "ready":
+        return False
+
+    with _lock:
+        meta = load_meta(doc_id)
+        if not meta:
+            return False
+        meta["current_version_id"] = version_id
+        _write_meta_file(meta)
+    return True
 
 
 def delete_doc(doc_id: str) -> bool:

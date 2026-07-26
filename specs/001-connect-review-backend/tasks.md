@@ -31,8 +31,8 @@ description: "TDD implementation tasks for intelligent review backend integratio
 
 ### Document versioning and locator-ready IR
 
-- [ ] T005 Write and run failing immutable document version, legacy compatibility, and reparse preservation tests in `backend/tests/test_document_versions.py`
-- [ ] T006 Implement immutable `versions/{version_id}` storage and compatible current-version reads in `backend/services/document_store.py` and `backend/services/document_pipeline.py`, then make T005 green
+- [X] T005 Write and run failing immutable document version, legacy compatibility, and reparse preservation tests in `backend/tests/test_document_versions.py`
+- [X] T006 Implement immutable `versions/{version_id}` storage and compatible current-version reads in `backend/services/document_store.py` and `backend/services/document_pipeline.py`, then make T005 green
 - [ ] T007 Write and run failing MinerU/PDF/DOCX locator preservation tests in `backend/tests/test_document_locators.py`
 - [ ] T008 Preserve MinerU normalized bbox, build pdfplumber word rectangles, and assign stable DOCX paragraph/table-cell locators in `mineru_service/adapter.py` and `backend/services/document_pipeline.py`, then make T007 green
 

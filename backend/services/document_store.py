@@ -219,19 +219,45 @@ def _index_row(meta: dict) -> dict:
     }
 
 
+def _load_visibility_index_locked() -> list[dict]:
+    if not INDEX_FILE.exists():
+        return []
+    try:
+        items = json.loads(INDEX_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError("document visibility index is unreadable") from exc
+    if not isinstance(items, list) or not all(isinstance(item, dict) for item in items):
+        raise RuntimeError("document visibility index has invalid structure")
+    return items
+
+
+def migrate_index_visibility() -> None:
+    """Upgrade pre-versioning index rows once, then persist the snapshot source."""
+    with _index_lock:
+        items = _load_visibility_index_locked()
+        changed = False
+        for item in items:
+            if "current_version_id" in item and "indexed_version_id" in item:
+                continue
+            meta = load_meta(item.get("id", "")) or {}
+            item["current_version_id"] = meta.get("current_version_id")
+            item["indexed_version_id"] = meta.get("indexed_version_id")
+            changed = True
+        if changed:
+            _save_index(items)
+
+
 def index_visibility_snapshot() -> tuple[list[str], list[str]]:
-    """Return active visibility keys and doc IDs that reject legacy chunks."""
+    """Return active visibility keys and doc IDs from the atomic list index."""
+    migrate_index_visibility()
+    with _index_lock:
+        items = _load_visibility_index_locked()
+
     active_keys: list[str] = []
     versioned_doc_ids: list[str] = []
-    if not UPLOADS_DIR.exists():
-        return active_keys, versioned_doc_ids
-    for path in UPLOADS_DIR.glob("*/meta.json"):
-        try:
-            meta = json.loads(path.read_text("utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        doc_id = meta.get("id")
-        version_id = meta.get("indexed_version_id")
+    for item in items:
+        doc_id = item.get("id")
+        version_id = item.get("indexed_version_id")
         if not doc_id:
             continue
         if version_id:

@@ -579,6 +579,175 @@ class TestDocumentVersions(unittest.TestCase):
         self.assertEqual({"kind": "legacy"}, store.load_ir("doc-version-test"))
         self.assertEqual("legacy preview", store.load_preview_md("doc-version-test"))
 
+    def test_visibility_query_supports_existing_text_mappings_and_pre_key_chunks(self):
+        from services import search
+
+        doc_id = "doc-version-test"
+        active_id = "a" * 64
+        inactive_id = "b" * 64
+        captured_bodies = []
+
+        class CapturingElasticsearch:
+            def search(self, *, index, body):
+                captured_bodies.append(body)
+                return {"hits": {"hits": []}}
+
+        with mock.patch.object(search, "get_es", return_value=CapturingElasticsearch()), \
+             mock.patch.object(search, "get_embeddings", return_value=[[0.1]]), \
+             mock.patch.object(
+                 search,
+                 "index_visibility_snapshot",
+                 return_value=([f"{doc_id}:{active_id}"], [doc_id]),
+             ):
+            search.search_local("query", k=2)
+
+        visibility_filter = captured_bodies[0]["query"]["bool"]["filter"][0]
+        self.assertEqual(visibility_filter, captured_bodies[1]["knn"]["filter"])
+        serialized = json.dumps(visibility_filter)
+        self.assertIn("visibility_key.keyword", serialized)
+        self.assertIn("document_version_id.keyword", serialized)
+        self.assertIn("doc_id.keyword", serialized)
+
+        text_mapped = {"visibility_key", "document_version_id"}
+
+        def exact_value(document, field):
+            base = field.removesuffix(".keyword")
+            if field in text_mapped:
+                return None
+            return document.get(base)
+
+        def matches(clause, document):
+            if "term" in clause:
+                field, expected = next(iter(clause["term"].items()))
+                return exact_value(document, field) == expected
+            if "terms" in clause:
+                field, expected = next(iter(clause["terms"].items()))
+                return exact_value(document, field) in expected
+            if "exists" in clause:
+                return document.get(clause["exists"]["field"]) is not None
+            boolean = clause["bool"]
+            if not all(matches(item, document) for item in boolean.get("filter", [])):
+                return False
+            if not all(matches(item, document) for item in boolean.get("must", [])):
+                return False
+            if any(matches(item, document) for item in boolean.get("must_not", [])):
+                return False
+            should = boolean.get("should", [])
+            required = boolean.get("minimum_should_match", 0 if not should else 1)
+            return sum(matches(item, document) for item in should) >= required
+
+        active_pre_key = {
+            "doc_id": doc_id,
+            "document_version_id": active_id,
+        }
+        inactive_pre_key = {
+            "doc_id": doc_id,
+            "document_version_id": inactive_id,
+        }
+        active_keyed = {
+            "doc_id": doc_id,
+            "document_version_id": active_id,
+            "visibility_key": f"{doc_id}:{active_id}",
+        }
+        inactive_keyed = {
+            "doc_id": doc_id,
+            "document_version_id": inactive_id,
+            "visibility_key": f"{doc_id}:{inactive_id}",
+        }
+        legacy_other = {"doc_id": "legacy-document"}
+        stale_legacy = {"doc_id": doc_id}
+
+        self.assertTrue(matches(visibility_filter, active_pre_key))
+        self.assertFalse(matches(visibility_filter, inactive_pre_key))
+        self.assertTrue(matches(visibility_filter, active_keyed))
+        self.assertFalse(matches(visibility_filter, inactive_keyed))
+        self.assertTrue(matches(visibility_filter, legacy_other))
+        self.assertFalse(matches(visibility_filter, stale_legacy))
+
+    def test_visibility_snapshot_uses_index_without_per_document_reads(self):
+        doc_id = "doc-version-test"
+        version_id = "c" * 64
+        store.INDEX_FILE.write_text(
+            json.dumps([{
+                "id": doc_id,
+                "current_version_id": version_id,
+                "indexed_version_id": version_id,
+            }]),
+            encoding="utf-8",
+        )
+
+        class ScanningUploads:
+            scanned = False
+
+            def exists(self):
+                return True
+
+            def glob(self, pattern):
+                self.scanned = True
+                return []
+
+        uploads = ScanningUploads()
+        with mock.patch.object(store, "UPLOADS_DIR", uploads):
+            snapshot = store.index_visibility_snapshot()
+
+        self.assertFalse(uploads.scanned, "visibility snapshot must not scan meta.json")
+        self.assertEqual(([f"{doc_id}:{version_id}"], [doc_id]), snapshot)
+
+    def test_legacy_docs_index_row_is_migrated_once_from_current_metadata(self):
+        doc_id = "doc-version-test"
+        version_id = "d" * 64
+        self._create_doc()
+        meta = store.load_meta(doc_id)
+        meta["current_version_id"] = version_id
+        meta["indexed_version_id"] = version_id
+        store.save_meta(meta)
+        store.INDEX_FILE.write_text(
+            json.dumps([{"id": doc_id, "status": "ready"}]), encoding="utf-8"
+        )
+        self.assertTrue(
+            hasattr(store, "migrate_index_visibility"),
+            "missing legacy visibility-index migration",
+        )
+
+        store.migrate_index_visibility()
+
+        migrated = json.loads(store.INDEX_FILE.read_text("utf-8"))[0]
+        self.assertEqual(version_id, migrated["current_version_id"])
+        self.assertEqual(version_id, migrated["indexed_version_id"])
+        self.assertEqual(([f"{doc_id}:{version_id}"], [doc_id]), store.index_visibility_snapshot())
+
+    def test_malformed_visibility_index_fails_closed(self):
+        from services import search
+
+        self._create_doc()
+        store.INDEX_FILE.write_text("{malformed", encoding="utf-8")
+        captured_bodies = []
+
+        class ExistingIndexElasticsearch:
+            def search(self, *, index, body):
+                captured_bodies.append(body)
+                if "match_none" in json.dumps(body):
+                    return {"hits": {"hits": []}}
+                return {
+                    "hits": {
+                        "hits": [{
+                            "_source": {
+                                "doc_id": "doc-version-test",
+                                "chunk_id": 1,
+                                "content": "stale legacy chunk",
+                            }
+                        }]
+                    }
+                }
+
+        with mock.patch.object(
+            search, "get_es", return_value=ExistingIndexElasticsearch()
+        ), mock.patch.object(search, "get_embeddings", return_value=[None]):
+            results = search.search_local("query", k=2)
+
+        self.assertEqual([], results)
+        self.assertIn("match_none", json.dumps(captured_bodies[0]))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -190,6 +190,50 @@ def route_decision(query: str, local_context: str) -> str:
 
 # ─── 本地搜索 (BM25 + Vector) ─────────────────────────────
 
+def _exact_terms(field: str, values: list[str]) -> dict:
+    return {
+        "bool": {
+            "should": [
+                {"terms": {field: values}},
+                {"terms": {f"{field}.keyword": values}},
+            ],
+            "minimum_should_match": 1,
+        }
+    }
+
+
+def _visibility_filter(active_keys: list[str], versioned_doc_ids: list[str]) -> dict:
+    legacy_must_not: list[dict] = [
+        {"exists": {"field": "visibility_key"}},
+        {"exists": {"field": "document_version_id"}},
+    ]
+    if versioned_doc_ids:
+        legacy_must_not.append(_exact_terms("doc_id", versioned_doc_ids))
+    visibility_should: list[dict] = [
+        {"bool": {"must_not": legacy_must_not}}
+    ]
+    if active_keys:
+        visibility_should.insert(0, _exact_terms("visibility_key", active_keys))
+        for key in active_keys:
+            doc_id, version_id = key.rsplit(":", 1)
+            visibility_should.append(
+                {
+                    "bool": {
+                        "filter": [
+                            _exact_terms("doc_id", [doc_id]),
+                            _exact_terms("document_version_id", [version_id]),
+                        ]
+                    }
+                }
+            )
+    return {
+        "bool": {
+            "should": visibility_should,
+            "minimum_should_match": 1,
+        }
+    }
+
+
 def search_local(query: str, k: int = None) -> list[dict]:
     """仅在本地 ES 搜索（BM25 + Vector + 手动 RRF）"""
     es = get_es()
@@ -202,20 +246,11 @@ def search_local(query: str, k: int = None) -> list[dict]:
         _safe_log(f"Embedding 失败: {e}", logging.WARNING)
         q_emb = None
 
-    active_keys, versioned_doc_ids = index_visibility_snapshot()
-    legacy_filter: dict = {
-        "bool": {"must_not": [{"exists": {"field": "visibility_key"}}]}
-    }
-    if versioned_doc_ids:
-        legacy_filter["bool"]["must_not"].append(
-            {"terms": {"doc_id": versioned_doc_ids}}
-        )
-    visibility_should = [legacy_filter]
-    if active_keys:
-        visibility_should.insert(0, {"terms": {"visibility_key": active_keys}})
-    visibility_filter = {
-        "bool": {"should": visibility_should, "minimum_should_match": 1}
-    }
+    try:
+        active_keys, versioned_doc_ids = index_visibility_snapshot()
+        visibility_filter = _visibility_filter(active_keys, versioned_doc_ids)
+    except RuntimeError:
+        visibility_filter = {"match_none": {}}
 
     # --- 2a. BM25 搜索 ---
     bm25_body = {

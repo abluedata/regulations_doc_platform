@@ -585,6 +585,183 @@ class TestDocumentVersions(unittest.TestCase):
             list((store.INDEX_FILE.parent / "publication_journal").glob("*.json")),
         )
 
+    def test_successful_delete_removes_directory_before_index_row(self):
+        self._create_doc()
+        original_save_index = store._save_index
+
+        def save_after_filesystem(items):
+            self.assertFalse(store.doc_dir("doc-version-test").exists())
+            return original_save_index(items)
+
+        with mock.patch.object(store, "_save_index", side_effect=save_after_filesystem):
+            self.assertTrue(store.delete_doc("doc-version-test"))
+
+        self.assertEqual([], json.loads(store.INDEX_FILE.read_text("utf-8")))
+        self.assertTrue(
+            list((store.INDEX_FILE.parent / "deletion_tombstones").glob("*.json"))
+        )
+
+    def test_failed_delete_retains_directory_index_row_and_tombstone(self):
+        self._create_doc()
+
+        with mock.patch.object(
+            store.shutil,
+            "rmtree",
+            side_effect=PermissionError("file is open"),
+        ):
+            with self.assertRaises(PermissionError):
+                store.delete_doc("doc-version-test")
+
+        self.assertTrue(store.doc_dir("doc-version-test").is_dir())
+        self.assertEqual(
+            ["doc-version-test"],
+            [item["id"] for item in json.loads(store.INDEX_FILE.read_text("utf-8"))],
+        )
+        self.assertTrue(
+            list((store.INDEX_FILE.parent / "deletion_tombstones").glob("*.json"))
+        )
+
+    def test_stale_writer_cannot_publish_after_failed_delete_starts(self):
+        self._create_doc()
+        stale_meta = store.load_meta("doc-version-test")
+        delete_entered = threading.Event()
+        release_delete = threading.Event()
+        writer_started = threading.Event()
+        delete_errors = []
+        writer_errors = []
+
+        def blocked_rmtree(*args, **kwargs):
+            delete_entered.set()
+            release_delete.wait(timeout=2)
+            raise PermissionError("file is open")
+
+        def delete_target():
+            try:
+                store.delete_doc("doc-version-test")
+            except Exception as exc:
+                delete_errors.append(exc)
+
+        def writer_target():
+            writer_started.set()
+            try:
+                store.save_meta(stale_meta)
+            except Exception as exc:
+                writer_errors.append(exc)
+
+        with mock.patch.object(store.shutil, "rmtree", side_effect=blocked_rmtree):
+            delete_thread = threading.Thread(target=delete_target)
+            writer_thread = threading.Thread(target=writer_target)
+            delete_thread.start()
+            self.assertTrue(delete_entered.wait(timeout=2))
+            writer_thread.start()
+            self.assertTrue(writer_started.wait(timeout=2))
+            writer_thread.join(timeout=0.1)
+            self.assertTrue(writer_thread.is_alive(), "writer must wait for deletion lock")
+            release_delete.set()
+            delete_thread.join(timeout=2)
+            writer_thread.join(timeout=2)
+
+        self.assertIsInstance(delete_errors[0], PermissionError)
+        self.assertEqual(1, len(writer_errors))
+        self.assertIsInstance(writer_errors[0], RuntimeError)
+        self.assertEqual(
+            ["doc-version-test"],
+            [item["id"] for item in json.loads(store.INDEX_FILE.read_text("utf-8"))],
+        )
+
+    def test_delete_waits_for_inflight_indexing_before_es_cleanup(self):
+        from api.routes import docs
+
+        self._create_doc()
+        index_started = threading.Event()
+        release_index = threading.Event()
+        index_finished = threading.Event()
+        cleanup_called = threading.Event()
+        cleanup_after_index = []
+        delete_errors = []
+
+        def blocked_index(*args, **kwargs):
+            index_started.set()
+            release_index.wait(timeout=2)
+            index_finished.set()
+
+        def cleanup_index(doc_id):
+            cleanup_after_index.append(index_finished.is_set())
+            cleanup_called.set()
+
+        def delete_target():
+            try:
+                docs.api_delete("doc-version-test")
+            except Exception as exc:
+                delete_errors.append(exc)
+
+        blocks = [{"type": "paragraph", "text": "Published", "page": 1}]
+        with mock.patch.object(
+            pipeline,
+            "_parse_with_mineru_or_fallback",
+            return_value=(blocks, 1, "test-parser"),
+        ), mock.patch.object(
+            pipeline, "_index_chunks", side_effect=blocked_index
+        ), mock.patch.object(
+            docs, "delete_doc_from_index", side_effect=cleanup_index
+        ):
+            pipeline_thread = threading.Thread(
+                target=pipeline._run_pipeline, args=("doc-version-test",)
+            )
+            delete_thread = threading.Thread(target=delete_target)
+            pipeline_thread.start()
+            self.assertTrue(index_started.wait(timeout=2))
+            delete_thread.start()
+            cleanup_called.wait(timeout=0.2)
+            cleanup_was_early = cleanup_called.is_set()
+            release_index.set()
+            pipeline_thread.join(timeout=2)
+            delete_thread.join(timeout=2)
+
+        self.assertFalse(cleanup_was_early, "ES cleanup must wait for active indexing")
+        self.assertEqual([True], cleanup_after_index)
+        self.assertEqual([], delete_errors)
+        self.assertFalse(store.doc_dir("doc-version-test").exists())
+
+    def test_deletion_tombstone_survives_restart_and_rejects_write_paths(self):
+        source = self._create_doc()
+        stale_meta = store.load_meta("doc-version-test")
+        digest = store.source_sha256(source)
+        version_id = store.compute_version_id(digest, "schema-v1", {"retry": True})
+        manifest = {
+            "version_id": version_id,
+            "source_sha256": digest,
+            "parser_schema_version": "schema-v1",
+            "parse_config": {},
+            "status": "ready",
+        }
+        with mock.patch.object(
+            store.shutil,
+            "rmtree",
+            side_effect=PermissionError("file is open"),
+        ):
+            with self.assertRaises(PermissionError):
+                store.delete_doc("doc-version-test")
+
+        with store._doc_locks_guard:
+            store._doc_locks.clear()
+
+        with self.assertRaises(RuntimeError):
+            store.save_meta(stale_meta)
+        self.assertIsNone(store.update_status("doc-version-test", "ready"))
+        with self.assertRaises(RuntimeError):
+            store.save_ir("doc-version-test", {"stale": True})
+        with self.assertRaises(RuntimeError):
+            store.save_preview_md("doc-version-test", "stale")
+        with self.assertRaises(RuntimeError):
+            store.write_version_artifacts(
+                "doc-version-test",
+                version_id,
+                {"stale": True},
+                "stale",
+                manifest,
+            )
+
     def test_search_hides_staged_chunks_until_version_publication(self):
         from services import search
 
@@ -737,6 +914,39 @@ class TestDocumentVersions(unittest.TestCase):
         delete_index.assert_not_called()
         enqueue.assert_called_once_with("doc-version-test")
         self.assertTrue(response.success)
+
+    def test_delete_route_keeps_es_when_local_deletion_fails(self):
+        from api.routes import docs
+
+        self._create_doc()
+        with mock.patch.object(docs, "delete_doc_from_index") as delete_index, \
+             mock.patch.object(
+                 docs, "delete_doc", side_effect=PermissionError("file is open")
+             ):
+            with self.assertRaises(PermissionError):
+                docs.api_delete("doc-version-test")
+
+        delete_index.assert_not_called()
+
+    def test_delete_route_retries_tombstoned_local_deletion(self):
+        from api.routes import docs
+
+        self._create_doc()
+        with mock.patch.object(
+            store.shutil,
+            "rmtree",
+            side_effect=PermissionError("file is open"),
+        ):
+            with self.assertRaises(PermissionError):
+                store.delete_doc("doc-version-test")
+
+        with mock.patch.object(docs, "delete_doc_from_index") as delete_index:
+            response = docs.api_delete("doc-version-test")
+
+        self.assertTrue(response.success)
+        delete_index.assert_called_once_with("doc-version-test")
+        self.assertFalse(store.doc_dir("doc-version-test").exists())
+        self.assertEqual([], json.loads(store.INDEX_FILE.read_text("utf-8")))
 
     def test_failed_reparse_preserves_legacy_top_level_artifacts(self):
         from api.routes import docs

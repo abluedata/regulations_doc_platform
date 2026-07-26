@@ -16,6 +16,7 @@ import re
 import shutil
 import threading
 import uuid
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -126,6 +127,39 @@ def _publication_journal_path(doc_id: str) -> Path:
     return _publication_journal_dir() / f"{name}.json"
 
 
+def _deletion_tombstone_dir() -> Path:
+    return INDEX_FILE.parent / "deletion_tombstones"
+
+
+def _deletion_tombstone_path(doc_id: str) -> Path:
+    name = hashlib.sha256(doc_id.encode("utf-8")).hexdigest()
+    return _deletion_tombstone_dir() / f"{name}.json"
+
+
+def _is_tombstoned(doc_id: str) -> bool:
+    return _deletion_tombstone_path(doc_id).exists()
+
+
+def _ensure_document_writable_locked(doc_id: str) -> None:
+    if _is_tombstoned(doc_id):
+        raise RuntimeError(f"document deletion is in progress: {doc_id}")
+
+
+def deletion_pending(doc_id: str) -> bool:
+    with _doc_lock(doc_id):
+        return _is_tombstoned(doc_id)
+
+
+@contextmanager
+def document_publication_guard(doc_id: str):
+    """Serialize ES indexing/current publication with document deletion."""
+    with _doc_lock(doc_id):
+        _ensure_document_writable_locked(doc_id)
+        if not doc_dir(doc_id).is_dir():
+            raise RuntimeError(f"document no longer exists: {doc_id}")
+        yield
+
+
 def ir_path(doc_id: str) -> Path:
     return doc_dir(doc_id) / "ir.json"
 
@@ -220,6 +254,7 @@ def _reconcile_publication_locked(doc_id: str) -> None:
     path = _publication_journal_path(doc_id)
     if not path.exists():
         return
+    _ensure_document_writable_locked(doc_id)
     journal = _read_publication_journal(path)
     if journal["doc_id"] != doc_id:
         raise RuntimeError(f"publication journal document mismatch: {path.name}")
@@ -249,6 +284,8 @@ def reconcile_pending_publications() -> None:
 
 def load_meta(doc_id: str) -> dict | None:
     with _doc_lock(doc_id):
+        if _is_tombstoned(doc_id):
+            return None
         _reconcile_publication_locked(doc_id)
         p = meta_path(doc_id)
         if not p.exists():
@@ -274,6 +311,7 @@ def _current_artifact_path(doc_id: str, filename: str) -> Path | None:
 def save_meta(meta: dict) -> None:
     doc_id = meta["id"]
     with _doc_lock(doc_id):
+        _ensure_document_writable_locked(doc_id)
         _reconcile_publication_locked(doc_id)
         if not doc_dir(doc_id).is_dir():
             raise RuntimeError(f"document no longer exists: {doc_id}")
@@ -478,9 +516,11 @@ def create_doc_record(
         "created_at": _now(),
         "updated_at": _now(),
     }
-    d = doc_dir(doc_id)
-    d.mkdir(parents=True, exist_ok=True)
-    save_meta(meta)
+    with _doc_lock(doc_id):
+        _ensure_document_writable_locked(doc_id)
+        d = doc_dir(doc_id)
+        d.mkdir(parents=True, exist_ok=True)
+        save_meta(meta)
     return meta
 
 
@@ -508,9 +548,11 @@ def update_status(
 
 
 def save_ir(doc_id: str, ir: dict) -> None:
-    _atomic_write_text(
-        ir_path(doc_id), json.dumps(ir, ensure_ascii=False, indent=2)
-    )
+    with _doc_lock(doc_id):
+        _ensure_document_writable_locked(doc_id)
+        _atomic_write_text(
+            ir_path(doc_id), json.dumps(ir, ensure_ascii=False, indent=2)
+        )
 
 
 def load_ir(doc_id: str) -> dict | None:
@@ -524,7 +566,9 @@ def load_ir(doc_id: str) -> dict | None:
 
 
 def save_preview_md(doc_id: str, md: str) -> None:
-    _atomic_write_text(preview_path(doc_id), md)
+    with _doc_lock(doc_id):
+        _ensure_document_writable_locked(doc_id)
+        _atomic_write_text(preview_path(doc_id), md)
 
 
 def load_preview_md(doc_id: str) -> str:
@@ -542,30 +586,32 @@ def write_version_artifacts(
     manifest: dict,
 ) -> Path:
     """Atomically create a complete immutable version directory."""
-    final_dir = version_dir(doc_id, version_id)
-    if manifest.get("version_id") != version_id:
-        raise ValueError("manifest version_id does not match directory version_id")
-    versions_dir = final_dir.parent
-    versions_dir.mkdir(parents=True, exist_ok=True)
-    if final_dir.exists():
-        raise FileExistsError(f"document version already exists: {version_id}")
+    with _doc_lock(doc_id):
+        _ensure_document_writable_locked(doc_id)
+        final_dir = version_dir(doc_id, version_id)
+        if manifest.get("version_id") != version_id:
+            raise ValueError("manifest version_id does not match directory version_id")
+        versions_dir = final_dir.parent
+        versions_dir.mkdir(parents=True, exist_ok=True)
+        if final_dir.exists():
+            raise FileExistsError(f"document version already exists: {version_id}")
 
-    temporary_dir = versions_dir / f".{version_id}.{uuid.uuid4().hex}.tmp"
-    temporary_dir.mkdir()
-    try:
-        (temporary_dir / "ir.json").write_text(
-            json.dumps(ir, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        (temporary_dir / "preview.md").write_text(preview_md, encoding="utf-8")
-        (temporary_dir / "manifest.json").write_text(
-            json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        temporary_dir.replace(final_dir)
-    except Exception:
-        if temporary_dir.exists():
-            shutil.rmtree(temporary_dir, ignore_errors=True)
-        raise
-    return final_dir
+        temporary_dir = versions_dir / f".{version_id}.{uuid.uuid4().hex}.tmp"
+        temporary_dir.mkdir()
+        try:
+            (temporary_dir / "ir.json").write_text(
+                json.dumps(ir, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            (temporary_dir / "preview.md").write_text(preview_md, encoding="utf-8")
+            (temporary_dir / "manifest.json").write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            temporary_dir.replace(final_dir)
+        except Exception:
+            if temporary_dir.exists():
+                shutil.rmtree(temporary_dir, ignore_errors=True)
+            raise
+        return final_dir
 
 
 def version_artifacts_match(
@@ -628,13 +674,31 @@ def delete_doc(doc_id: str) -> bool:
         _reconcile_publication_locked(doc_id)
         with _index_lock:
             items = _load_publication_index(allow_missing=False)
-            items = [x for x in items if x.get("id") != doc_id]
+            directory = doc_dir(doc_id)
+            row_exists = any(item.get("id") == doc_id for item in items)
+            tombstone_path = _deletion_tombstone_path(doc_id)
+            if not directory.exists() and not row_exists and not tombstone_path.exists():
+                return False
+            if not tombstone_path.exists():
+                _atomic_write_text(
+                    tombstone_path,
+                    json.dumps(
+                        {
+                            "doc_id": doc_id,
+                            "generation": uuid.uuid4().hex,
+                            "created_at": _now(),
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    ),
+                )
+            if directory.exists():
+                shutil.rmtree(directory)
+            if directory.exists():
+                raise RuntimeError(f"document directory deletion did not complete: {doc_id}")
+            items = [item for item in items if item.get("id") != doc_id]
             _save_index(items)
-        d = doc_dir(doc_id)
-        if d.exists():
-            shutil.rmtree(d, ignore_errors=True)
             return True
-        return False
 
 
 def original_file(doc_id: str) -> Path | None:

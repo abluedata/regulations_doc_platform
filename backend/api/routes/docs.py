@@ -18,6 +18,7 @@ from services.document_store import (
     MAX_UPLOAD_BYTES,
     create_doc_record,
     delete_doc,
+    deletion_pending,
     doc_dir,
     list_docs,
     load_ir,
@@ -163,10 +164,10 @@ def api_preview(doc_id: str):
 @router.delete("/{doc_id}", response_model=SimpleMessageResponse)
 def api_delete(doc_id: str):
     meta = load_meta(doc_id)
-    if not meta:
+    if not meta and not deletion_pending(doc_id):
         raise HTTPException(status_code=404, detail="文档不存在")
-    delete_doc_from_index(doc_id)
     delete_doc(doc_id)
+    delete_doc_from_index(doc_id)
     return SimpleMessageResponse(message="已删除文档及索引", success=True)
 
 

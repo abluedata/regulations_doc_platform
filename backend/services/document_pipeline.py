@@ -46,6 +46,7 @@ from services.utils import (
 )
 from services.document_store import (
     compute_version_id,
+    document_publication_guard,
     load_meta,
     original_file,
     set_current_version,
@@ -170,21 +171,23 @@ def _run_pipeline(doc_id: str) -> None:
                     f"版本 ID 冲突，已存产物与本次解析不同: {version_id}"
                 )
 
-        # Artifacts are durable before versioned chunks enter the search index.
-        update_status(doc_id, "indexing", chunk_count=len(chunks))
-        _index_chunks(doc_id, version_id, meta, chunks)
+        # Deletion must not clean ES between indexing and current publication.
+        with document_publication_guard(doc_id):
+            if not update_status(doc_id, "indexing", chunk_count=len(chunks)):
+                raise RuntimeError("文档已删除，无法写入检索索引")
+            _index_chunks(doc_id, version_id, meta, chunks)
 
-        if not set_current_version(
-            doc_id,
-            version_id,
-            status="ready",
-            page_count=page_count,
-            chunk_count=len(chunks),
-            duration_sec=elapsed,
-            engine=engine,
-            indexed_version_id=version_id,
-        ):
-            raise RuntimeError("解析版本发布失败")
+            if not set_current_version(
+                doc_id,
+                version_id,
+                status="ready",
+                page_count=page_count,
+                chunk_count=len(chunks),
+                duration_sec=elapsed,
+                engine=engine,
+                indexed_version_id=version_id,
+            ):
+                raise RuntimeError("解析版本发布失败")
     except Exception as e:
         traceback.print_exc()
         update_status(

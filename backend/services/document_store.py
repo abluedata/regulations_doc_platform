@@ -214,7 +214,30 @@ def _index_row(meta: dict) -> dict:
         "updated_at": meta.get("updated_at"),
         "duration_sec": meta.get("duration_sec"),
         "engine": meta.get("engine"),
+        "current_version_id": meta.get("current_version_id"),
+        "indexed_version_id": meta.get("indexed_version_id"),
     }
+
+
+def index_visibility_snapshot() -> tuple[list[str], list[str]]:
+    """Return active visibility keys and doc IDs that reject legacy chunks."""
+    active_keys: list[str] = []
+    versioned_doc_ids: list[str] = []
+    if not UPLOADS_DIR.exists():
+        return active_keys, versioned_doc_ids
+    for path in UPLOADS_DIR.glob("*/meta.json"):
+        try:
+            meta = json.loads(path.read_text("utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        doc_id = meta.get("id")
+        version_id = meta.get("indexed_version_id")
+        if not doc_id:
+            continue
+        if version_id:
+            active_keys.append(f"{doc_id}:{version_id}")
+            versioned_doc_ids.append(doc_id)
+    return sorted(active_keys), sorted(versioned_doc_ids)
 
 
 def list_docs(
@@ -372,6 +395,28 @@ def write_version_artifacts(
             shutil.rmtree(temporary_dir, ignore_errors=True)
         raise
     return final_dir
+
+
+def version_artifacts_match(
+    doc_id: str,
+    version_id: str,
+    ir: dict,
+    preview_md: str,
+    manifest: dict,
+) -> bool:
+    """Verify that a deterministic ID refers to exactly the parsed output."""
+    try:
+        directory = version_dir(doc_id, version_id)
+        stored_ir = json.loads((directory / "ir.json").read_text("utf-8"))
+        stored_preview = (directory / "preview.md").read_text("utf-8")
+        stored_manifest = json.loads((directory / "manifest.json").read_text("utf-8"))
+    except (OSError, json.JSONDecodeError, ValueError):
+        return False
+    return (
+        stored_ir == ir
+        and stored_preview == preview_md
+        and stored_manifest == manifest
+    )
 
 
 def set_current_version(

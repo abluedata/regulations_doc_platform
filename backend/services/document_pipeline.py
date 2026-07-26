@@ -51,6 +51,7 @@ from services.document_store import (
     set_current_version,
     source_sha256,
     update_status,
+    version_artifacts_match,
     write_version_artifacts,
 )
 
@@ -63,6 +64,12 @@ MINERU_FALLBACK = os.environ.get("MINERU_FALLBACK", "true").lower() in (
     "yes",
 )
 PARSER_SCHEMA_VERSION = "1"
+PARSER_BUILD_VERSION = os.environ.get(
+    "PARSER_BUILD_VERSION", "document-pipeline-v1"
+)
+MINERU_SERVICE_VERSION = os.environ.get(
+    "MINERU_SERVICE_VERSION", "mineru-adapter-1.0.0"
+)
 
 _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="doc-parse")
 
@@ -72,7 +79,9 @@ def current_parse_config() -> dict[str, Any]:
         "chunk_overlap": CHUNK_OVERLAP,
         "chunk_size": CHUNK_SIZE,
         "mineru_fallback": MINERU_FALLBACK,
+        "mineru_service_version": MINERU_SERVICE_VERSION,
         "mineru_url": MINERU_URL,
+        "parser_build_version": PARSER_BUILD_VERSION,
     }
 
 
@@ -153,7 +162,12 @@ def _run_pipeline(doc_id: str) -> None:
         try:
             write_version_artifacts(doc_id, version_id, ir, preview_md, manifest)
         except FileExistsError:
-            pass
+            if not version_artifacts_match(
+                doc_id, version_id, ir, preview_md, manifest
+            ):
+                raise RuntimeError(
+                    f"版本 ID 冲突，已存产物与本次解析不同: {version_id}"
+                )
 
         # Artifacts are durable before versioned chunks enter the search index.
         update_status(doc_id, "indexing", chunk_count=len(chunks))
@@ -170,7 +184,6 @@ def _run_pipeline(doc_id: str) -> None:
             indexed_version_id=version_id,
         ):
             raise RuntimeError("解析版本发布失败")
-        _delete_inactive_index_versions(doc_id, version_id)
     except Exception as e:
         traceback.print_exc()
         update_status(
@@ -818,6 +831,7 @@ def _index_chunks(
                     "properties": {
                         "doc_id": {"type": "keyword"},
                         "document_version_id": {"type": "keyword"},
+                        "visibility_key": {"type": "keyword"},
                         "filename": {"type": "keyword"},
                         "title": {"type": "text"},
                         "chunk_id": {"type": "integer"},
@@ -862,6 +876,7 @@ def _index_chunks(
             doc = {
                 "doc_id": chunk["doc_id"],
                 "document_version_id": version_id,
+                "visibility_key": f"{doc_id}:{version_id}",
                 "filename": chunk.get("filename", ""),
                 "title": chunk.get("title", ""),
                 "chunk_id": chunk["chunk_id"],
@@ -877,40 +892,6 @@ def _index_chunks(
             bulk_body += json.dumps(doc, ensure_ascii=False) + "\n"
         if bulk_body:
             es.bulk(body=bulk_body, refresh=True)
-
-
-def _delete_inactive_index_versions(doc_id: str, version_id: str) -> None:
-    """Best-effort cleanup; search visibility is controlled by the current pointer."""
-    try:
-        from elasticsearch import Elasticsearch
-
-        es = Elasticsearch(
-            ES_HOST,
-            basic_auth=(ES_USER, ES_PASS),
-            verify_certs=False,
-            ssl_show_warn=False,
-        )
-        if es.indices.exists(index=INDEX_NAME):
-            es.delete_by_query(
-                index=INDEX_NAME,
-                body={
-                    "query": {
-                        "bool": {
-                            "filter": [{"term": {"doc_id": doc_id}}],
-                            "must_not": [
-                                {"term": {"document_version_id": version_id}}
-                            ],
-                        }
-                    }
-                },
-                refresh=True,
-                conflicts="proceed",
-            )
-    except Exception as e:
-        try:
-            print(f"inactive version cleanup: {e}")
-        except (OSError, UnicodeError):
-            pass
 
 
 def delete_doc_from_index(doc_id: str) -> None:

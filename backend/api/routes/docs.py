@@ -178,10 +178,5 @@ def api_reparse(doc_id: str):
     src = doc_dir(doc_id)
     if not src.exists():
         raise HTTPException(status_code=400, detail="原始文件目录不存在")
-    # 清理旧产物
-    for name in ("ir.json", "preview.md"):
-        p = src / name
-        if p.exists():
-            p.unlink()
     enqueue_parse(doc_id)
     return SimpleMessageResponse(message="已重新排队解析", success=True)

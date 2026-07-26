@@ -28,13 +28,8 @@ class TestDocumentVersions(unittest.TestCase):
         )
         self.uploads_patch.start()
         self.index_patch.start()
-        self.cleanup_patch = mock.patch.object(
-            pipeline, "_delete_inactive_index_versions"
-        )
-        self.cleanup_patch.start()
 
     def tearDown(self):
-        self.cleanup_patch.stop()
         self.index_patch.stop()
         self.uploads_patch.stop()
         self.temp_dir.cleanup()
@@ -439,37 +434,119 @@ class TestDocumentVersions(unittest.TestCase):
         )
 
         class FakeElasticsearch:
+            def __init__(self):
+                self.bodies = []
+
             def search(self, *, index, body):
-                hits = [
-                    {
-                        "_source": {
-                            "doc_id": "doc-version-test",
-                            "document_version_id": new_id,
-                            "chunk_id": 1,
-                            "content": "staged",
-                        }
-                    },
-                    {
-                        "_source": {
-                            "doc_id": "doc-version-test",
-                            "document_version_id": old_id,
-                            "chunk_id": 1,
-                            "content": "published",
-                        }
-                    },
-                ]
+                self.bodies.append(body)
+                serialized = json.dumps(body)
+                has_visibility_filter = "visibility_key" in serialized
+                selected_id = (
+                    new_id if has_visibility_filter and new_id in serialized else old_id
+                ) if has_visibility_filter else new_id
+                selected_content = (
+                    "staged" if selected_id == new_id else "published"
+                )
+                hits = [{
+                    "_source": {
+                        "doc_id": "doc-version-test",
+                        "document_version_id": selected_id,
+                        "visibility_key": f"doc-version-test:{selected_id}",
+                        "chunk_id": 1,
+                        "content": selected_content,
+                    }
+                }]
                 return {"hits": {"hits": hits}}
 
-        with mock.patch.object(search, "get_es", return_value=FakeElasticsearch()), \
+        fake_es = FakeElasticsearch()
+        with mock.patch.object(search, "get_es", return_value=fake_es), \
              mock.patch.object(search, "get_embeddings", return_value=[None]):
             before = search.search_local("query", k=2)
             self.assertEqual(["published"], [item["content"] for item in before])
+            self.assertIn("visibility_key", json.dumps(fake_es.bodies[0]))
 
             store.set_current_version(
                 "doc-version-test", new_id, indexed_version_id=new_id
             )
             after = search.search_local("query", k=2)
             self.assertEqual(["staged"], [item["content"] for item in after])
+
+    def test_same_engine_with_different_build_versions_gets_distinct_versions(self):
+        self._create_doc(content=b"same service input")
+        blocks = [{"type": "paragraph", "text": "Parsed", "page": 1}]
+        with mock.patch.object(
+            pipeline, "PARSER_BUILD_VERSION", "parser-build-a", create=True
+        ), mock.patch.object(
+            pipeline,
+            "_parse_with_mineru_or_fallback",
+            return_value=(blocks, 1, "mineru:pipeline"),
+        ), mock.patch.object(pipeline, "_index_chunks"):
+            pipeline._run_pipeline("doc-version-test")
+        first_id = store.load_meta("doc-version-test")["current_version_id"]
+
+        with mock.patch.object(
+            pipeline, "PARSER_BUILD_VERSION", "parser-build-b", create=True
+        ), mock.patch.object(
+            pipeline,
+            "_parse_with_mineru_or_fallback",
+            return_value=(blocks, 1, "mineru:pipeline"),
+        ), mock.patch.object(pipeline, "_index_chunks"):
+            pipeline._run_pipeline("doc-version-test")
+        second_id = store.load_meta("doc-version-test")["current_version_id"]
+
+        self.assertNotEqual(first_id, second_id)
+
+    def test_same_version_id_with_different_output_fails_before_indexing(self):
+        self._create_doc(content=b"collision input")
+        first_blocks = [{"type": "paragraph", "text": "First", "page": 1}]
+        with mock.patch.object(
+            pipeline,
+            "_parse_with_mineru_or_fallback",
+            return_value=(first_blocks, 1, "same-engine"),
+        ), mock.patch.object(pipeline, "_index_chunks"):
+            pipeline._run_pipeline("doc-version-test")
+        published_id = store.load_meta("doc-version-test")["current_version_id"]
+
+        second_blocks = [{"type": "paragraph", "text": "Different", "page": 1}]
+        index_mock = mock.Mock()
+        with contextlib.redirect_stderr(io.StringIO()):
+            with mock.patch.object(
+                pipeline,
+                "_parse_with_mineru_or_fallback",
+                return_value=(second_blocks, 1, "same-engine"),
+            ), mock.patch.object(pipeline, "_index_chunks", index_mock):
+                pipeline._run_pipeline("doc-version-test")
+
+        index_mock.assert_not_called()
+        self.assertEqual("failed", store.load_meta("doc-version-test")["status"])
+        self.assertEqual(
+            "First",
+            json.loads(
+                (store.version_dir("doc-version-test", published_id) / "ir.json").read_text(
+                    "utf-8"
+                )
+            )["blocks"][0]["text"],
+        )
+
+    def test_publishing_new_version_retains_historical_version_chunks(self):
+        source = self._create_doc(content=b"first")
+        blocks = [{"type": "paragraph", "text": "First", "page": 1}]
+        with mock.patch.object(
+            pipeline,
+            "_parse_with_mineru_or_fallback",
+            return_value=(blocks, 1, "engine-a"),
+        ), mock.patch.object(pipeline, "_index_chunks"):
+            pipeline._run_pipeline("doc-version-test")
+
+        source.write_bytes(b"second")
+        with mock.patch.object(
+            pipeline,
+            "_parse_with_mineru_or_fallback",
+            return_value=(blocks, 1, "engine-b"),
+        ), mock.patch.object(pipeline, "_index_chunks"):
+            pipeline._run_pipeline("doc-version-test")
+
+        self.assertFalse(hasattr(pipeline, "_delete_inactive_index_versions"))
 
     def test_reparse_route_does_not_delete_active_index_before_staging(self):
         from api.routes import docs
@@ -482,6 +559,25 @@ class TestDocumentVersions(unittest.TestCase):
         delete_index.assert_not_called()
         enqueue.assert_called_once_with("doc-version-test")
         self.assertTrue(response.success)
+
+    def test_failed_reparse_preserves_legacy_top_level_artifacts(self):
+        from api.routes import docs
+
+        self._create_doc()
+        store.save_ir("doc-version-test", {"kind": "legacy"})
+        store.save_preview_md("doc-version-test", "legacy preview")
+        with mock.patch.object(docs, "enqueue_parse"):
+            docs.api_reparse("doc-version-test")
+        with contextlib.redirect_stderr(io.StringIO()):
+            with mock.patch.object(
+                pipeline,
+                "_parse_with_mineru_or_fallback",
+                side_effect=RuntimeError("parse failed"),
+            ):
+                pipeline._run_pipeline("doc-version-test")
+
+        self.assertEqual({"kind": "legacy"}, store.load_ir("doc-version-test"))
+        self.assertEqual("legacy preview", store.load_preview_md("doc-version-test"))
 
 
 if __name__ == "__main__":

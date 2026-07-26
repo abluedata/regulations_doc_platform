@@ -39,7 +39,7 @@ from services.utils import (
     looks_like_markdown_table,
     normalize_table_fields,
 )
-from services.document_store import load_meta
+from services.document_store import index_visibility_snapshot
 from elasticsearch import Elasticsearch
 
 logger = logging.getLogger(__name__)
@@ -202,13 +202,33 @@ def search_local(query: str, k: int = None) -> list[dict]:
         _safe_log(f"Embedding 失败: {e}", logging.WARNING)
         q_emb = None
 
+    active_keys, versioned_doc_ids = index_visibility_snapshot()
+    legacy_filter: dict = {
+        "bool": {"must_not": [{"exists": {"field": "visibility_key"}}]}
+    }
+    if versioned_doc_ids:
+        legacy_filter["bool"]["must_not"].append(
+            {"terms": {"doc_id": versioned_doc_ids}}
+        )
+    visibility_should = [legacy_filter]
+    if active_keys:
+        visibility_should.insert(0, {"terms": {"visibility_key": active_keys}})
+    visibility_filter = {
+        "bool": {"should": visibility_should, "minimum_should_match": 1}
+    }
+
     # --- 2a. BM25 搜索 ---
     bm25_body = {
         "query": {
-            "multi_match": {
-                "query": query,
-                "fields": ["title^3", "content"],
-                "type": "best_fields",
+            "bool": {
+                "must": [{
+                    "multi_match": {
+                        "query": query,
+                        "fields": ["title^3", "content"],
+                        "type": "best_fields",
+                    }
+                }],
+                "filter": [visibility_filter],
             }
         },
         "size": k * 2,
@@ -225,6 +245,7 @@ def search_local(query: str, k: int = None) -> list[dict]:
                 "query_vector": q_emb,
                 "k": k,
                 "num_candidates": HYBRID_NUM_CANDIDATES,
+                "filter": visibility_filter,
             },
             "size": k * 2,
             "_source": {"excludes": ["embedding"]},
@@ -233,24 +254,7 @@ def search_local(query: str, k: int = None) -> list[dict]:
         knn_results_raw = knn_result["hits"]["hits"]
 
     # --- 2c. 手动 RRF 融合 ---
-    visibility_cache: dict[str, str | None] = {}
-
-    def _is_current_hit(hit: dict) -> bool:
-        src = hit.get("_source") or {}
-        doc_id = src.get("doc_id") or ""
-        if doc_id not in visibility_cache:
-            meta = load_meta(doc_id) or {}
-            visibility_cache[doc_id] = meta.get("indexed_version_id")
-        active_version = visibility_cache[doc_id]
-        candidate_version = src.get("document_version_id")
-        if active_version:
-            return candidate_version == active_version
-        return candidate_version is None
-
-    bm25_hits = [
-        hit for hit in bm25_result["hits"]["hits"] if _is_current_hit(hit)
-    ]
-    knn_results_raw = [hit for hit in knn_results_raw if _is_current_hit(hit)]
+    bm25_hits = bm25_result["hits"]["hits"]
     ranked = {}
 
     def _rrf_score(rank: int, const: float = RRF_RANK_CONSTANT) -> float:

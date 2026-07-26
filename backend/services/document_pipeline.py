@@ -8,7 +8,7 @@ PDF / DOCX：优先调用独立 MinerU 适配服务（pipeline + CPU）；
   - 上游官方 mineru-api 在 8001
   - 不可用时降级：PDF→pdfplumber，DOCX→python-docx
 分块：结构感知（表整包 + 父标题注入 + 句界二次切）；不依赖 SBERT。
-索引：复用 indexer 的 embedding + ES 写入；按 doc_id 先删后写。
+索引：复用 indexer 的 embedding + ES 写入；版本先暂存，发布后清理旧版本。
 """
 from __future__ import annotations
 
@@ -95,9 +95,6 @@ def _run_pipeline(doc_id: str) -> None:
 
         source_digest = source_sha256(src)
         parse_config = current_parse_config()
-        version_id = compute_version_id(
-            source_digest, PARSER_SCHEMA_VERSION, parse_config
-        )
 
         ext = (meta.get("ext") or src.suffix.lstrip(".")).lower()
 
@@ -116,6 +113,11 @@ def _run_pipeline(doc_id: str) -> None:
         if not raw_blocks:
             update_status(doc_id, "failed", error="未能提取到有效内容")
             return
+
+        parse_config = {**parse_config, "effective_engine": engine}
+        version_id = compute_version_id(
+            source_digest, PARSER_SCHEMA_VERSION, parse_config
+        )
 
         # ── table normalization (promote pseudo-tables to atomic table blocks) ──
         raw_blocks = promote_raw_blocks(raw_blocks)
@@ -139,10 +141,6 @@ def _run_pipeline(doc_id: str) -> None:
             update_status(doc_id, "failed", error="分块结果为空")
             return
 
-        # ── indexing ──
-        update_status(doc_id, "indexing", chunk_count=len(chunks))
-        _index_chunks(doc_id, meta, chunks)
-
         elapsed = round(time.time() - t0, 1)
         manifest = {
             "version_id": version_id,
@@ -156,16 +154,23 @@ def _run_pipeline(doc_id: str) -> None:
             write_version_artifacts(doc_id, version_id, ir, preview_md, manifest)
         except FileExistsError:
             pass
-        update_status(
+
+        # Artifacts are durable before versioned chunks enter the search index.
+        update_status(doc_id, "indexing", chunk_count=len(chunks))
+        _index_chunks(doc_id, version_id, meta, chunks)
+
+        if not set_current_version(
             doc_id,
-            "ready",
+            version_id,
+            status="ready",
             page_count=page_count,
             chunk_count=len(chunks),
             duration_sec=elapsed,
             engine=engine,
-        )
-        if not set_current_version(doc_id, version_id):
+            indexed_version_id=version_id,
+        ):
             raise RuntimeError("解析版本发布失败")
+        _delete_inactive_index_versions(doc_id, version_id)
     except Exception as e:
         traceback.print_exc()
         update_status(
@@ -790,7 +795,9 @@ def _ir_to_preview_md(ir: dict) -> str:
 
 # ─── Index to ES ───────────────────────────────────────────
 
-def _index_chunks(doc_id: str, meta: dict, chunks: list[dict]) -> None:
+def _index_chunks(
+    doc_id: str, version_id: str, meta: dict, chunks: list[dict]
+) -> None:
     from elasticsearch import Elasticsearch
     import json
     import requests
@@ -810,6 +817,7 @@ def _index_chunks(doc_id: str, meta: dict, chunks: list[dict]) -> None:
                 "mappings": {
                     "properties": {
                         "doc_id": {"type": "keyword"},
+                        "document_version_id": {"type": "keyword"},
                         "filename": {"type": "keyword"},
                         "title": {"type": "text"},
                         "chunk_id": {"type": "integer"},
@@ -830,17 +838,6 @@ def _index_chunks(doc_id: str, meta: dict, chunks: list[dict]) -> None:
             },
         )
 
-    # 删除该 doc 旧 chunk
-    try:
-        es.delete_by_query(
-            index=INDEX_NAME,
-            body={"query": {"term": {"doc_id": doc_id}}},
-            refresh=True,
-            conflicts="proceed",
-        )
-    except Exception as e:
-        print(f"⚠️ delete_by_query: {e}")
-
     filename = meta.get("filename") or ""
     file_type = meta.get("ext") or ""
     for c in chunks:
@@ -856,9 +853,15 @@ def _index_chunks(doc_id: str, meta: dict, chunks: list[dict]) -> None:
         batch_e = embeddings[i : i + batch_size]
         bulk_body = ""
         for chunk, emb in zip(batch_c, batch_e):
-            action = {"index": {"_index": INDEX_NAME}}
+            action = {
+                "index": {
+                    "_index": INDEX_NAME,
+                    "_id": f"{doc_id}:{version_id}:{chunk['chunk_id']}",
+                }
+            }
             doc = {
                 "doc_id": chunk["doc_id"],
+                "document_version_id": version_id,
                 "filename": chunk.get("filename", ""),
                 "title": chunk.get("title", ""),
                 "chunk_id": chunk["chunk_id"],
@@ -874,6 +877,40 @@ def _index_chunks(doc_id: str, meta: dict, chunks: list[dict]) -> None:
             bulk_body += json.dumps(doc, ensure_ascii=False) + "\n"
         if bulk_body:
             es.bulk(body=bulk_body, refresh=True)
+
+
+def _delete_inactive_index_versions(doc_id: str, version_id: str) -> None:
+    """Best-effort cleanup; search visibility is controlled by the current pointer."""
+    try:
+        from elasticsearch import Elasticsearch
+
+        es = Elasticsearch(
+            ES_HOST,
+            basic_auth=(ES_USER, ES_PASS),
+            verify_certs=False,
+            ssl_show_warn=False,
+        )
+        if es.indices.exists(index=INDEX_NAME):
+            es.delete_by_query(
+                index=INDEX_NAME,
+                body={
+                    "query": {
+                        "bool": {
+                            "filter": [{"term": {"doc_id": doc_id}}],
+                            "must_not": [
+                                {"term": {"document_version_id": version_id}}
+                            ],
+                        }
+                    }
+                },
+                refresh=True,
+                conflicts="proceed",
+            )
+    except Exception as e:
+        try:
+            print(f"inactive version cleanup: {e}")
+        except (OSError, UnicodeError):
+            pass
 
 
 def delete_doc_from_index(doc_id: str) -> None:

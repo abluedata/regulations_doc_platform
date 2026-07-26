@@ -27,7 +27,14 @@ INDEX_FILE = DATA_ROOT / "docs_index.json"
 
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
-_lock = threading.RLock()
+_index_lock = threading.RLock()
+_doc_locks_guard = threading.Lock()
+_doc_locks: dict[str, threading.RLock] = {}
+
+
+def _doc_lock(doc_id: str) -> threading.RLock:
+    with _doc_locks_guard:
+        return _doc_locks.setdefault(doc_id, threading.RLock())
 
 # 对外状态（与设计简报一致）
 STATUS_LABELS = {
@@ -174,20 +181,20 @@ def _current_artifact_path(doc_id: str, filename: str) -> Path | None:
 
 def save_meta(meta: dict) -> None:
     doc_id = meta["id"]
-    d = doc_dir(doc_id)
-    d.mkdir(parents=True, exist_ok=True)
-    _write_meta_file(meta)
-    with _lock:
-        items = _load_index()
-        found = False
-        for i, it in enumerate(items):
-            if it.get("id") == doc_id:
-                items[i] = _index_row(meta)
-                found = True
-                break
-        if not found:
-            items.insert(0, _index_row(meta))
-        _save_index(items)
+    with _doc_lock(doc_id):
+        doc_dir(doc_id).mkdir(parents=True, exist_ok=True)
+        _write_meta_file(meta)
+        with _index_lock:
+            items = _load_index()
+            found = False
+            for i, it in enumerate(items):
+                if it.get("id") == doc_id:
+                    items[i] = _index_row(meta)
+                    found = True
+                    break
+            if not found:
+                items.insert(0, _index_row(meta))
+            _save_index(items)
 
 
 def _index_row(meta: dict) -> dict:
@@ -216,7 +223,7 @@ def list_docs(
     page: int = 1,
     page_size: int = 50,
 ) -> tuple[list[dict], int]:
-    with _lock:
+    with _index_lock:
         items = _load_index()
     if status and status != "all":
         if status == "processing":
@@ -290,19 +297,20 @@ def update_status(
     error: str | None = None,
     **fields: Any,
 ) -> dict | None:
-    meta = load_meta(doc_id)
-    if not meta:
-        return None
-    meta["status"] = status
-    meta["stage_label"] = STATUS_LABELS.get(status, status)
-    if error is not None:
-        meta["error"] = error
-    elif status != "failed":
-        meta["error"] = None
-    for k, v in fields.items():
-        meta[k] = v
-    save_meta(meta)
-    return meta
+    with _doc_lock(doc_id):
+        meta = load_meta(doc_id)
+        if not meta:
+            return None
+        meta["status"] = status
+        meta["stage_label"] = STATUS_LABELS.get(status, status)
+        if error is not None:
+            meta["error"] = error
+        elif status != "failed":
+            meta["error"] = None
+        for k, v in fields.items():
+            meta[k] = v
+        save_meta(meta)
+        return meta
 
 
 def save_ir(doc_id: str, ir: dict) -> None:
@@ -366,7 +374,9 @@ def write_version_artifacts(
     return final_dir
 
 
-def set_current_version(doc_id: str, version_id: str) -> bool:
+def set_current_version(
+    doc_id: str, version_id: str, *, status: str | None = None, **fields: Any
+) -> bool:
     """Publish a complete, successful version as the document's current version."""
     try:
         directory = version_dir(doc_id, version_id)
@@ -382,17 +392,23 @@ def set_current_version(doc_id: str, version_id: str) -> bool:
     if manifest.get("version_id") != version_id or manifest.get("status") != "ready":
         return False
 
-    with _lock:
+    with _doc_lock(doc_id):
         meta = load_meta(doc_id)
         if not meta:
             return False
         meta["current_version_id"] = version_id
-        _write_meta_file(meta)
+        if status is not None:
+            meta["status"] = status
+            meta["stage_label"] = STATUS_LABELS.get(status, status)
+            if status != "failed":
+                meta["error"] = None
+        meta.update(fields)
+        save_meta(meta)
     return True
 
 
 def delete_doc(doc_id: str) -> bool:
-    with _lock:
+    with _index_lock:
         items = _load_index()
         items = [x for x in items if x.get("id") != doc_id]
         _save_index(items)

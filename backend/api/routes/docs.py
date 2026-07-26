@@ -183,6 +183,5 @@ def api_reparse(doc_id: str):
         p = src / name
         if p.exists():
             p.unlink()
-    delete_doc_from_index(doc_id)
     enqueue_parse(doc_id)
     return SimpleMessageResponse(message="已重新排队解析", success=True)

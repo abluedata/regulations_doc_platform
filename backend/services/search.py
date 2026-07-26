@@ -39,6 +39,7 @@ from services.utils import (
     looks_like_markdown_table,
     normalize_table_fields,
 )
+from services.document_store import load_meta
 from elasticsearch import Elasticsearch
 
 logger = logging.getLogger(__name__)
@@ -232,7 +233,24 @@ def search_local(query: str, k: int = None) -> list[dict]:
         knn_results_raw = knn_result["hits"]["hits"]
 
     # --- 2c. 手动 RRF 融合 ---
-    bm25_hits = bm25_result["hits"]["hits"]
+    visibility_cache: dict[str, str | None] = {}
+
+    def _is_current_hit(hit: dict) -> bool:
+        src = hit.get("_source") or {}
+        doc_id = src.get("doc_id") or ""
+        if doc_id not in visibility_cache:
+            meta = load_meta(doc_id) or {}
+            visibility_cache[doc_id] = meta.get("indexed_version_id")
+        active_version = visibility_cache[doc_id]
+        candidate_version = src.get("document_version_id")
+        if active_version:
+            return candidate_version == active_version
+        return candidate_version is None
+
+    bm25_hits = [
+        hit for hit in bm25_result["hits"]["hits"] if _is_current_hit(hit)
+    ]
+    knn_results_raw = [hit for hit in knn_results_raw if _is_current_hit(hit)]
     ranked = {}
 
     def _rrf_score(rank: int, const: float = RRF_RANK_CONSTANT) -> float:
@@ -240,13 +258,19 @@ def search_local(query: str, k: int = None) -> list[dict]:
 
     for rank, hit in enumerate(bm25_hits):
         src = hit["_source"]
-        key = f"{src.get('doc_id','')}:{src.get('chunk_id','')}"
+        key = (
+            f"{src.get('doc_id','')}:{src.get('document_version_id','legacy')}:"
+            f"{src.get('chunk_id','')}"
+        )
         ranked.setdefault(key, {"doc": src, "score": 0})
         ranked[key]["score"] += _rrf_score(rank)
 
     for rank, hit in enumerate(knn_results_raw):
         src = hit["_source"]
-        key = f"{src.get('doc_id','')}:{src.get('chunk_id','')}"
+        key = (
+            f"{src.get('doc_id','')}:{src.get('document_version_id','legacy')}:"
+            f"{src.get('chunk_id','')}"
+        )
         ranked.setdefault(key, {"doc": src, "score": 0})
         ranked[key]["score"] += _rrf_score(rank)
 

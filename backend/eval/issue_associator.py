@@ -51,9 +51,12 @@ def text_similarity(left: str, right: str) -> float:
     if left_clean == right_clean:
         return 1.0
     if left_clean in right_clean or right_clean in left_clean:
+        # 子串包含：命中文本确实是另一侧文本的一部分。
+        # 对“关键词命中 vs 风险描述”的比对，纯长度比(3/17≈0.18)会
+        # 把完全正确的关联误判为不匹配，因此子串包含给一个稳定的高基准。
         shorter = min(len(left_clean), len(right_clean))
         longer = max(len(left_clean), len(right_clean))
-        return shorter / longer
+        return max(0.8, shorter / longer)
     return SequenceMatcher(None, left_clean, right_clean).ratio()
 
 

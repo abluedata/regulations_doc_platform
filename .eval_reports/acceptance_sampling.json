@@ -1,0 +1,479 @@
+{
+  "part_a_metrics": {
+    "schema_version": 1,
+    "generated_at": "2026-08-15T07:52:24.866794+00:00",
+    "gold": {
+      "dataset_id": "termination_agreement_gold_v1",
+      "dataset_sha256": "dbef3f2a57f8cb5a4c29a92d0ade7c3fccbb74b306ec49f18106cd050dcd64a4",
+      "document_count": 30,
+      "issue_count": 40
+    },
+    "overall": {
+      "tp": 23,
+      "fp": 29,
+      "fn": 17,
+      "precision": 0.4423076923076923,
+      "recall": 0.575,
+      "f1": 0.5
+    },
+    "by_severity": {
+      "high": {
+        "tp": 16,
+        "fp": 8,
+        "fn": 5,
+        "precision": 0.6666666666666666,
+        "recall": 0.7619047619047619,
+        "f1": 0.7111111111111111
+      },
+      "low": {
+        "tp": 3,
+        "fp": 0,
+        "fn": 1,
+        "precision": 1.0,
+        "recall": 0.75,
+        "f1": 0.8571428571428571
+      },
+      "medium": {
+        "tp": 4,
+        "fp": 21,
+        "fn": 11,
+        "precision": 0.16,
+        "recall": 0.26666666666666666,
+        "f1": 0.2
+      }
+    },
+    "confusion_matrix": [
+      {
+        "rule_id": "confidentiality_overbroad",
+        "severity": "low",
+        "doc_type": "termination_agreement",
+        "tp": 3,
+        "fp": 0,
+        "fn": 1,
+        "precision": 1.0,
+        "recall": 0.75,
+        "f1": 0.8571428571428571
+      },
+      {
+        "rule_id": "evidence_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "tp": 0,
+        "fp": 9,
+        "fn": 4,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      {
+        "rule_id": "non_compete_overbroad",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "tp": 4,
+        "fp": 4,
+        "fn": 2,
+        "precision": 0.5,
+        "recall": 0.6666666666666666,
+        "f1": 0.5714285714285715
+      },
+      {
+        "rule_id": "notice_or_pay_missing",
+        "severity": "high",
+        "doc_type": "termination_agreement",
+        "tp": 4,
+        "fp": 4,
+        "fn": 1,
+        "precision": 0.5,
+        "recall": 0.8,
+        "f1": 0.6153846153846154
+      },
+      {
+        "rule_id": "payment_deadline_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "tp": 0,
+        "fp": 8,
+        "fn": 5,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0
+      },
+      {
+        "rule_id": "release_scope_overbroad",
+        "severity": "high",
+        "doc_type": "termination_agreement",
+        "tp": 4,
+        "fp": 0,
+        "fn": 1,
+        "precision": 1.0,
+        "recall": 0.8,
+        "f1": 0.888888888888889
+      },
+      {
+        "rule_id": "severance_underpayment",
+        "severity": "high",
+        "doc_type": "termination_agreement",
+        "tp": 4,
+        "fp": 4,
+        "fn": 2,
+        "precision": 0.5,
+        "recall": 0.6666666666666666,
+        "f1": 0.5714285714285715
+      },
+      {
+        "rule_id": "social_insurance_unsettled",
+        "severity": "high",
+        "doc_type": "termination_agreement",
+        "tp": 4,
+        "fp": 0,
+        "fn": 1,
+        "precision": 1.0,
+        "recall": 0.8,
+        "f1": 0.888888888888889
+      }
+    ],
+    "false_positives": [
+      {
+        "doc_id": "termination-agreement-001",
+        "rule_id": "severance_underpayment",
+        "severity": "high",
+        "doc_type": "termination_agreement",
+        "text": "一次性包干"
+      },
+      {
+        "doc_id": "termination-agreement-002",
+        "rule_id": "notice_or_pay_missing",
+        "severity": "high",
+        "doc_type": "termination_agreement",
+        "text": "提前三十日"
+      },
+      {
+        "doc_id": "termination-agreement-003",
+        "rule_id": "payment_deadline_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "text": "支付日期"
+      },
+      {
+        "doc_id": "termination-agreement-003",
+        "rule_id": "payment_deadline_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "text": "逾期责任"
+      },
+      {
+        "doc_id": "termination-agreement-006",
+        "rule_id": "non_compete_overbroad",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "text": "不得从事"
+      },
+      {
+        "doc_id": "termination-agreement-008",
+        "rule_id": "evidence_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "text": "违纪"
+      },
+      {
+        "doc_id": "termination-agreement-008",
+        "rule_id": "evidence_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "text": "调查记录"
+      },
+      {
+        "doc_id": "termination-agreement-008",
+        "rule_id": "evidence_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "text": "事实描述"
+      },
+      {
+        "doc_id": "termination-agreement-009",
+        "rule_id": "severance_underpayment",
+        "severity": "high",
+        "doc_type": "termination_agreement",
+        "text": "一次性包干"
+      },
+      {
+        "doc_id": "termination-agreement-010",
+        "rule_id": "notice_or_pay_missing",
+        "severity": "high",
+        "doc_type": "termination_agreement",
+        "text": "提前三十日"
+      },
+      {
+        "doc_id": "termination-agreement-011",
+        "rule_id": "payment_deadline_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "text": "支付日期"
+      },
+      {
+        "doc_id": "termination-agreement-011",
+        "rule_id": "payment_deadline_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "text": "逾期责任"
+      },
+      {
+        "doc_id": "termination-agreement-014",
+        "rule_id": "non_compete_overbroad",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "text": "不得从事"
+      },
+      {
+        "doc_id": "termination-agreement-016",
+        "rule_id": "evidence_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "text": "违纪"
+      },
+      {
+        "doc_id": "termination-agreement-016",
+        "rule_id": "evidence_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "text": "调查记录"
+      },
+      {
+        "doc_id": "termination-agreement-016",
+        "rule_id": "evidence_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "text": "事实描述"
+      },
+      {
+        "doc_id": "termination-agreement-017",
+        "rule_id": "severance_underpayment",
+        "severity": "high",
+        "doc_type": "termination_agreement",
+        "text": "一次性包干"
+      },
+      {
+        "doc_id": "termination-agreement-018",
+        "rule_id": "notice_or_pay_missing",
+        "severity": "high",
+        "doc_type": "termination_agreement",
+        "text": "提前三十日"
+      },
+      {
+        "doc_id": "termination-agreement-019",
+        "rule_id": "payment_deadline_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "text": "支付日期"
+      },
+      {
+        "doc_id": "termination-agreement-019",
+        "rule_id": "payment_deadline_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "text": "逾期责任"
+      },
+      {
+        "doc_id": "termination-agreement-022",
+        "rule_id": "non_compete_overbroad",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "text": "不得从事"
+      },
+      {
+        "doc_id": "termination-agreement-024",
+        "rule_id": "evidence_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "text": "违纪"
+      },
+      {
+        "doc_id": "termination-agreement-024",
+        "rule_id": "evidence_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "text": "调查记录"
+      },
+      {
+        "doc_id": "termination-agreement-024",
+        "rule_id": "evidence_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "text": "事实描述"
+      },
+      {
+        "doc_id": "termination-agreement-025",
+        "rule_id": "severance_underpayment",
+        "severity": "high",
+        "doc_type": "termination_agreement",
+        "text": "一次性包干"
+      },
+      {
+        "doc_id": "termination-agreement-026",
+        "rule_id": "notice_or_pay_missing",
+        "severity": "high",
+        "doc_type": "termination_agreement",
+        "text": "提前三十日"
+      },
+      {
+        "doc_id": "termination-agreement-027",
+        "rule_id": "payment_deadline_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "text": "支付日期"
+      },
+      {
+        "doc_id": "termination-agreement-027",
+        "rule_id": "payment_deadline_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "text": "逾期责任"
+      },
+      {
+        "doc_id": "termination-agreement-030",
+        "rule_id": "non_compete_overbroad",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "text": "不得从事"
+      }
+    ],
+    "false_negatives": [
+      {
+        "doc_id": "termination-agreement-003",
+        "rule_id": "payment_deadline_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "issue_id": "ta-003-i1",
+        "text": "补偿款支付期限不明确。"
+      },
+      {
+        "doc_id": "termination-agreement-003",
+        "rule_id": "non_compete_overbroad",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "issue_id": "ta-003-i2",
+        "text": "竞业限制义务缺少补偿、范围或期限边界。"
+      },
+      {
+        "doc_id": "termination-agreement-006",
+        "rule_id": "severance_underpayment",
+        "severity": "high",
+        "doc_type": "termination_agreement",
+        "issue_id": "ta-006-i2",
+        "text": "经济补偿金低于法定或约定标准。"
+      },
+      {
+        "doc_id": "termination-agreement-008",
+        "rule_id": "evidence_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "issue_id": "ta-008-i1",
+        "text": "解除原因缺少事实依据或附件引用。"
+      },
+      {
+        "doc_id": "termination-agreement-009",
+        "rule_id": "release_scope_overbroad",
+        "severity": "high",
+        "doc_type": "termination_agreement",
+        "issue_id": "ta-009-i2",
+        "text": "员工被要求放弃全部未知或未来权利。"
+      },
+      {
+        "doc_id": "termination-agreement-011",
+        "rule_id": "payment_deadline_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "issue_id": "ta-011-i1",
+        "text": "补偿款支付期限不明确。"
+      },
+      {
+        "doc_id": "termination-agreement-012",
+        "rule_id": "confidentiality_overbroad",
+        "severity": "low",
+        "doc_type": "termination_agreement",
+        "issue_id": "ta-012-i2",
+        "text": "保密义务范围过宽且没有例外。"
+      },
+      {
+        "doc_id": "termination-agreement-015",
+        "rule_id": "notice_or_pay_missing",
+        "severity": "high",
+        "doc_type": "termination_agreement",
+        "issue_id": "ta-015-i2",
+        "text": "协议未约定三十日通知或代通知金安排。"
+      },
+      {
+        "doc_id": "termination-agreement-016",
+        "rule_id": "evidence_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "issue_id": "ta-016-i1",
+        "text": "解除原因缺少事实依据或附件引用。"
+      },
+      {
+        "doc_id": "termination-agreement-018",
+        "rule_id": "social_insurance_unsettled",
+        "severity": "high",
+        "doc_type": "termination_agreement",
+        "issue_id": "ta-018-i2",
+        "text": "社保、公积金或工资结清安排缺失。"
+      },
+      {
+        "doc_id": "termination-agreement-019",
+        "rule_id": "payment_deadline_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "issue_id": "ta-019-i1",
+        "text": "补偿款支付期限不明确。"
+      },
+      {
+        "doc_id": "termination-agreement-021",
+        "rule_id": "evidence_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "issue_id": "ta-021-i2",
+        "text": "解除原因缺少事实依据或附件引用。"
+      },
+      {
+        "doc_id": "termination-agreement-024",
+        "rule_id": "evidence_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "issue_id": "ta-024-i1",
+        "text": "解除原因缺少事实依据或附件引用。"
+      },
+      {
+        "doc_id": "termination-agreement-024",
+        "rule_id": "payment_deadline_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "issue_id": "ta-024-i2",
+        "text": "补偿款支付期限不明确。"
+      },
+      {
+        "doc_id": "termination-agreement-027",
+        "rule_id": "payment_deadline_missing",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "issue_id": "ta-027-i1",
+        "text": "补偿款支付期限不明确。"
+      },
+      {
+        "doc_id": "termination-agreement-027",
+        "rule_id": "non_compete_overbroad",
+        "severity": "medium",
+        "doc_type": "termination_agreement",
+        "issue_id": "ta-027-i2",
+        "text": "竞业限制义务缺少补偿、范围或期限边界。"
+      },
+      {
+        "doc_id": "termination-agreement-030",
+        "rule_id": "severance_underpayment",
+        "severity": "high",
+        "doc_type": "termination_agreement",
+        "issue_id": "ta-030-i2",
+        "text": "经济补偿金低于法定或约定标准。"
+      }
+    ]
+  }
+}

@@ -1,0 +1,992 @@
+{
+  "predictions": [
+    {
+      "doc_id": "termination-agreement-001",
+      "doc_type": "termination_agreement",
+      "rule_id": "severance_underpayment",
+      "severity": "high",
+      "text": "补偿金",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-001",
+      "doc_type": "termination_agreement",
+      "rule_id": "severance_underpayment",
+      "severity": "high",
+      "text": "一次性包干",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-002",
+      "doc_type": "termination_agreement",
+      "rule_id": "notice_or_pay_missing",
+      "severity": "high",
+      "text": "提前三十日",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-002",
+      "doc_type": "termination_agreement",
+      "rule_id": "notice_or_pay_missing",
+      "severity": "high",
+      "text": "代通知金",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-003",
+      "doc_type": "termination_agreement",
+      "rule_id": "payment_deadline_missing",
+      "severity": "medium",
+      "text": "支付日期",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-003",
+      "doc_type": "termination_agreement",
+      "rule_id": "payment_deadline_missing",
+      "severity": "medium",
+      "text": "逾期责任",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-004",
+      "doc_type": "termination_agreement",
+      "rule_id": "release_scope_overbroad",
+      "severity": "high",
+      "text": "放弃",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-005",
+      "doc_type": "termination_agreement",
+      "rule_id": "social_insurance_unsettled",
+      "severity": "high",
+      "text": "社保",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-006",
+      "doc_type": "termination_agreement",
+      "rule_id": "non_compete_overbroad",
+      "severity": "medium",
+      "text": "不得从事",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-006",
+      "doc_type": "termination_agreement",
+      "rule_id": "non_compete_overbroad",
+      "severity": "medium",
+      "text": "竞业",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-007",
+      "doc_type": "termination_agreement",
+      "rule_id": "confidentiality_overbroad",
+      "severity": "low",
+      "text": "保密",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-008",
+      "doc_type": "termination_agreement",
+      "rule_id": "evidence_missing",
+      "severity": "medium",
+      "text": "违纪",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-008",
+      "doc_type": "termination_agreement",
+      "rule_id": "evidence_missing",
+      "severity": "medium",
+      "text": "调查记录",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-008",
+      "doc_type": "termination_agreement",
+      "rule_id": "evidence_missing",
+      "severity": "medium",
+      "text": "事实描述",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-009",
+      "doc_type": "termination_agreement",
+      "rule_id": "severance_underpayment",
+      "severity": "high",
+      "text": "补偿金",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-009",
+      "doc_type": "termination_agreement",
+      "rule_id": "severance_underpayment",
+      "severity": "high",
+      "text": "一次性包干",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-010",
+      "doc_type": "termination_agreement",
+      "rule_id": "notice_or_pay_missing",
+      "severity": "high",
+      "text": "提前三十日",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-010",
+      "doc_type": "termination_agreement",
+      "rule_id": "notice_or_pay_missing",
+      "severity": "high",
+      "text": "代通知金",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-011",
+      "doc_type": "termination_agreement",
+      "rule_id": "payment_deadline_missing",
+      "severity": "medium",
+      "text": "支付日期",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-011",
+      "doc_type": "termination_agreement",
+      "rule_id": "payment_deadline_missing",
+      "severity": "medium",
+      "text": "逾期责任",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-012",
+      "doc_type": "termination_agreement",
+      "rule_id": "release_scope_overbroad",
+      "severity": "high",
+      "text": "放弃",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-013",
+      "doc_type": "termination_agreement",
+      "rule_id": "social_insurance_unsettled",
+      "severity": "high",
+      "text": "社保",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-014",
+      "doc_type": "termination_agreement",
+      "rule_id": "non_compete_overbroad",
+      "severity": "medium",
+      "text": "不得从事",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-014",
+      "doc_type": "termination_agreement",
+      "rule_id": "non_compete_overbroad",
+      "severity": "medium",
+      "text": "竞业",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-015",
+      "doc_type": "termination_agreement",
+      "rule_id": "confidentiality_overbroad",
+      "severity": "low",
+      "text": "保密",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-016",
+      "doc_type": "termination_agreement",
+      "rule_id": "evidence_missing",
+      "severity": "medium",
+      "text": "违纪",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-016",
+      "doc_type": "termination_agreement",
+      "rule_id": "evidence_missing",
+      "severity": "medium",
+      "text": "调查记录",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-016",
+      "doc_type": "termination_agreement",
+      "rule_id": "evidence_missing",
+      "severity": "medium",
+      "text": "事实描述",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-017",
+      "doc_type": "termination_agreement",
+      "rule_id": "severance_underpayment",
+      "severity": "high",
+      "text": "补偿金",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-017",
+      "doc_type": "termination_agreement",
+      "rule_id": "severance_underpayment",
+      "severity": "high",
+      "text": "一次性包干",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-018",
+      "doc_type": "termination_agreement",
+      "rule_id": "notice_or_pay_missing",
+      "severity": "high",
+      "text": "提前三十日",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-018",
+      "doc_type": "termination_agreement",
+      "rule_id": "notice_or_pay_missing",
+      "severity": "high",
+      "text": "代通知金",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-019",
+      "doc_type": "termination_agreement",
+      "rule_id": "payment_deadline_missing",
+      "severity": "medium",
+      "text": "支付日期",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-019",
+      "doc_type": "termination_agreement",
+      "rule_id": "payment_deadline_missing",
+      "severity": "medium",
+      "text": "逾期责任",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-020",
+      "doc_type": "termination_agreement",
+      "rule_id": "release_scope_overbroad",
+      "severity": "high",
+      "text": "放弃",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-021",
+      "doc_type": "termination_agreement",
+      "rule_id": "social_insurance_unsettled",
+      "severity": "high",
+      "text": "社保",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-022",
+      "doc_type": "termination_agreement",
+      "rule_id": "non_compete_overbroad",
+      "severity": "medium",
+      "text": "不得从事",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-022",
+      "doc_type": "termination_agreement",
+      "rule_id": "non_compete_overbroad",
+      "severity": "medium",
+      "text": "竞业",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-023",
+      "doc_type": "termination_agreement",
+      "rule_id": "confidentiality_overbroad",
+      "severity": "low",
+      "text": "保密",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-024",
+      "doc_type": "termination_agreement",
+      "rule_id": "evidence_missing",
+      "severity": "medium",
+      "text": "违纪",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-024",
+      "doc_type": "termination_agreement",
+      "rule_id": "evidence_missing",
+      "severity": "medium",
+      "text": "调查记录",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-024",
+      "doc_type": "termination_agreement",
+      "rule_id": "evidence_missing",
+      "severity": "medium",
+      "text": "事实描述",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-025",
+      "doc_type": "termination_agreement",
+      "rule_id": "severance_underpayment",
+      "severity": "high",
+      "text": "补偿金",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-025",
+      "doc_type": "termination_agreement",
+      "rule_id": "severance_underpayment",
+      "severity": "high",
+      "text": "一次性包干",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-026",
+      "doc_type": "termination_agreement",
+      "rule_id": "notice_or_pay_missing",
+      "severity": "high",
+      "text": "提前三十日",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-026",
+      "doc_type": "termination_agreement",
+      "rule_id": "notice_or_pay_missing",
+      "severity": "high",
+      "text": "代通知金",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-027",
+      "doc_type": "termination_agreement",
+      "rule_id": "payment_deadline_missing",
+      "severity": "medium",
+      "text": "支付日期",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-027",
+      "doc_type": "termination_agreement",
+      "rule_id": "payment_deadline_missing",
+      "severity": "medium",
+      "text": "逾期责任",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-028",
+      "doc_type": "termination_agreement",
+      "rule_id": "release_scope_overbroad",
+      "severity": "high",
+      "text": "放弃",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-029",
+      "doc_type": "termination_agreement",
+      "rule_id": "social_insurance_unsettled",
+      "severity": "high",
+      "text": "社保",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-030",
+      "doc_type": "termination_agreement",
+      "rule_id": "non_compete_overbroad",
+      "severity": "medium",
+      "text": "不得从事",
+      "confidence": "rule_deterministic"
+    },
+    {
+      "doc_id": "termination-agreement-030",
+      "doc_type": "termination_agreement",
+      "rule_id": "non_compete_overbroad",
+      "severity": "medium",
+      "text": "竞业",
+      "confidence": "rule_deterministic"
+    }
+  ],
+  "documents": [
+    {
+      "doc_id": "termination-agreement-001",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-001",
+          "doc_type": "termination_agreement",
+          "rule_id": "severance_underpayment",
+          "severity": "high",
+          "text": "补偿金",
+          "confidence": "rule_deterministic"
+        },
+        {
+          "doc_id": "termination-agreement-001",
+          "doc_type": "termination_agreement",
+          "rule_id": "severance_underpayment",
+          "severity": "high",
+          "text": "一次性包干",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-002",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-002",
+          "doc_type": "termination_agreement",
+          "rule_id": "notice_or_pay_missing",
+          "severity": "high",
+          "text": "提前三十日",
+          "confidence": "rule_deterministic"
+        },
+        {
+          "doc_id": "termination-agreement-002",
+          "doc_type": "termination_agreement",
+          "rule_id": "notice_or_pay_missing",
+          "severity": "high",
+          "text": "代通知金",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-003",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-003",
+          "doc_type": "termination_agreement",
+          "rule_id": "payment_deadline_missing",
+          "severity": "medium",
+          "text": "支付日期",
+          "confidence": "rule_deterministic"
+        },
+        {
+          "doc_id": "termination-agreement-003",
+          "doc_type": "termination_agreement",
+          "rule_id": "payment_deadline_missing",
+          "severity": "medium",
+          "text": "逾期责任",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-004",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-004",
+          "doc_type": "termination_agreement",
+          "rule_id": "release_scope_overbroad",
+          "severity": "high",
+          "text": "放弃",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-005",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-005",
+          "doc_type": "termination_agreement",
+          "rule_id": "social_insurance_unsettled",
+          "severity": "high",
+          "text": "社保",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-006",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-006",
+          "doc_type": "termination_agreement",
+          "rule_id": "non_compete_overbroad",
+          "severity": "medium",
+          "text": "不得从事",
+          "confidence": "rule_deterministic"
+        },
+        {
+          "doc_id": "termination-agreement-006",
+          "doc_type": "termination_agreement",
+          "rule_id": "non_compete_overbroad",
+          "severity": "medium",
+          "text": "竞业",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-007",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-007",
+          "doc_type": "termination_agreement",
+          "rule_id": "confidentiality_overbroad",
+          "severity": "low",
+          "text": "保密",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-008",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-008",
+          "doc_type": "termination_agreement",
+          "rule_id": "evidence_missing",
+          "severity": "medium",
+          "text": "违纪",
+          "confidence": "rule_deterministic"
+        },
+        {
+          "doc_id": "termination-agreement-008",
+          "doc_type": "termination_agreement",
+          "rule_id": "evidence_missing",
+          "severity": "medium",
+          "text": "调查记录",
+          "confidence": "rule_deterministic"
+        },
+        {
+          "doc_id": "termination-agreement-008",
+          "doc_type": "termination_agreement",
+          "rule_id": "evidence_missing",
+          "severity": "medium",
+          "text": "事实描述",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-009",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-009",
+          "doc_type": "termination_agreement",
+          "rule_id": "severance_underpayment",
+          "severity": "high",
+          "text": "补偿金",
+          "confidence": "rule_deterministic"
+        },
+        {
+          "doc_id": "termination-agreement-009",
+          "doc_type": "termination_agreement",
+          "rule_id": "severance_underpayment",
+          "severity": "high",
+          "text": "一次性包干",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-010",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-010",
+          "doc_type": "termination_agreement",
+          "rule_id": "notice_or_pay_missing",
+          "severity": "high",
+          "text": "提前三十日",
+          "confidence": "rule_deterministic"
+        },
+        {
+          "doc_id": "termination-agreement-010",
+          "doc_type": "termination_agreement",
+          "rule_id": "notice_or_pay_missing",
+          "severity": "high",
+          "text": "代通知金",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-011",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-011",
+          "doc_type": "termination_agreement",
+          "rule_id": "payment_deadline_missing",
+          "severity": "medium",
+          "text": "支付日期",
+          "confidence": "rule_deterministic"
+        },
+        {
+          "doc_id": "termination-agreement-011",
+          "doc_type": "termination_agreement",
+          "rule_id": "payment_deadline_missing",
+          "severity": "medium",
+          "text": "逾期责任",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-012",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-012",
+          "doc_type": "termination_agreement",
+          "rule_id": "release_scope_overbroad",
+          "severity": "high",
+          "text": "放弃",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-013",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-013",
+          "doc_type": "termination_agreement",
+          "rule_id": "social_insurance_unsettled",
+          "severity": "high",
+          "text": "社保",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-014",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-014",
+          "doc_type": "termination_agreement",
+          "rule_id": "non_compete_overbroad",
+          "severity": "medium",
+          "text": "不得从事",
+          "confidence": "rule_deterministic"
+        },
+        {
+          "doc_id": "termination-agreement-014",
+          "doc_type": "termination_agreement",
+          "rule_id": "non_compete_overbroad",
+          "severity": "medium",
+          "text": "竞业",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-015",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-015",
+          "doc_type": "termination_agreement",
+          "rule_id": "confidentiality_overbroad",
+          "severity": "low",
+          "text": "保密",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-016",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-016",
+          "doc_type": "termination_agreement",
+          "rule_id": "evidence_missing",
+          "severity": "medium",
+          "text": "违纪",
+          "confidence": "rule_deterministic"
+        },
+        {
+          "doc_id": "termination-agreement-016",
+          "doc_type": "termination_agreement",
+          "rule_id": "evidence_missing",
+          "severity": "medium",
+          "text": "调查记录",
+          "confidence": "rule_deterministic"
+        },
+        {
+          "doc_id": "termination-agreement-016",
+          "doc_type": "termination_agreement",
+          "rule_id": "evidence_missing",
+          "severity": "medium",
+          "text": "事实描述",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-017",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-017",
+          "doc_type": "termination_agreement",
+          "rule_id": "severance_underpayment",
+          "severity": "high",
+          "text": "补偿金",
+          "confidence": "rule_deterministic"
+        },
+        {
+          "doc_id": "termination-agreement-017",
+          "doc_type": "termination_agreement",
+          "rule_id": "severance_underpayment",
+          "severity": "high",
+          "text": "一次性包干",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-018",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-018",
+          "doc_type": "termination_agreement",
+          "rule_id": "notice_or_pay_missing",
+          "severity": "high",
+          "text": "提前三十日",
+          "confidence": "rule_deterministic"
+        },
+        {
+          "doc_id": "termination-agreement-018",
+          "doc_type": "termination_agreement",
+          "rule_id": "notice_or_pay_missing",
+          "severity": "high",
+          "text": "代通知金",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-019",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-019",
+          "doc_type": "termination_agreement",
+          "rule_id": "payment_deadline_missing",
+          "severity": "medium",
+          "text": "支付日期",
+          "confidence": "rule_deterministic"
+        },
+        {
+          "doc_id": "termination-agreement-019",
+          "doc_type": "termination_agreement",
+          "rule_id": "payment_deadline_missing",
+          "severity": "medium",
+          "text": "逾期责任",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-020",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-020",
+          "doc_type": "termination_agreement",
+          "rule_id": "release_scope_overbroad",
+          "severity": "high",
+          "text": "放弃",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-021",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-021",
+          "doc_type": "termination_agreement",
+          "rule_id": "social_insurance_unsettled",
+          "severity": "high",
+          "text": "社保",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-022",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-022",
+          "doc_type": "termination_agreement",
+          "rule_id": "non_compete_overbroad",
+          "severity": "medium",
+          "text": "不得从事",
+          "confidence": "rule_deterministic"
+        },
+        {
+          "doc_id": "termination-agreement-022",
+          "doc_type": "termination_agreement",
+          "rule_id": "non_compete_overbroad",
+          "severity": "medium",
+          "text": "竞业",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-023",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-023",
+          "doc_type": "termination_agreement",
+          "rule_id": "confidentiality_overbroad",
+          "severity": "low",
+          "text": "保密",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-024",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-024",
+          "doc_type": "termination_agreement",
+          "rule_id": "evidence_missing",
+          "severity": "medium",
+          "text": "违纪",
+          "confidence": "rule_deterministic"
+        },
+        {
+          "doc_id": "termination-agreement-024",
+          "doc_type": "termination_agreement",
+          "rule_id": "evidence_missing",
+          "severity": "medium",
+          "text": "调查记录",
+          "confidence": "rule_deterministic"
+        },
+        {
+          "doc_id": "termination-agreement-024",
+          "doc_type": "termination_agreement",
+          "rule_id": "evidence_missing",
+          "severity": "medium",
+          "text": "事实描述",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-025",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-025",
+          "doc_type": "termination_agreement",
+          "rule_id": "severance_underpayment",
+          "severity": "high",
+          "text": "补偿金",
+          "confidence": "rule_deterministic"
+        },
+        {
+          "doc_id": "termination-agreement-025",
+          "doc_type": "termination_agreement",
+          "rule_id": "severance_underpayment",
+          "severity": "high",
+          "text": "一次性包干",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-026",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-026",
+          "doc_type": "termination_agreement",
+          "rule_id": "notice_or_pay_missing",
+          "severity": "high",
+          "text": "提前三十日",
+          "confidence": "rule_deterministic"
+        },
+        {
+          "doc_id": "termination-agreement-026",
+          "doc_type": "termination_agreement",
+          "rule_id": "notice_or_pay_missing",
+          "severity": "high",
+          "text": "代通知金",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-027",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-027",
+          "doc_type": "termination_agreement",
+          "rule_id": "payment_deadline_missing",
+          "severity": "medium",
+          "text": "支付日期",
+          "confidence": "rule_deterministic"
+        },
+        {
+          "doc_id": "termination-agreement-027",
+          "doc_type": "termination_agreement",
+          "rule_id": "payment_deadline_missing",
+          "severity": "medium",
+          "text": "逾期责任",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-028",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-028",
+          "doc_type": "termination_agreement",
+          "rule_id": "release_scope_overbroad",
+          "severity": "high",
+          "text": "放弃",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-029",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-029",
+          "doc_type": "termination_agreement",
+          "rule_id": "social_insurance_unsettled",
+          "severity": "high",
+          "text": "社保",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    },
+    {
+      "doc_id": "termination-agreement-030",
+      "findings": [
+        {
+          "doc_id": "termination-agreement-030",
+          "doc_type": "termination_agreement",
+          "rule_id": "non_compete_overbroad",
+          "severity": "medium",
+          "text": "不得从事",
+          "confidence": "rule_deterministic"
+        },
+        {
+          "doc_id": "termination-agreement-030",
+          "doc_type": "termination_agreement",
+          "rule_id": "non_compete_overbroad",
+          "severity": "medium",
+          "text": "竞业",
+          "confidence": "rule_deterministic"
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "generated_by": "run_acceptance.part_a",
+    "engine": "deterministic"
+  }
+}

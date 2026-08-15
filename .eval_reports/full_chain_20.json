@@ -1,0 +1,231 @@
+{
+  "total": 20,
+  "ok": 20,
+  "ok_rate": 1.0,
+  "status_signatures": {
+    "complete|1": 20
+  },
+  "avg_elapsed_s": 1.22,
+  "runs": [
+    {
+      "round": 1,
+      "ok": true,
+      "status": "complete",
+      "findings": 1,
+      "decision": "failed",
+      "export": "ok",
+      "elapsed_s": 1.22,
+      "job_id": "4272461e-b5e4-4a3e-9fc9-91cb9c30b4fc",
+      "error": null
+    },
+    {
+      "round": 2,
+      "ok": true,
+      "status": "complete",
+      "findings": 1,
+      "decision": "failed",
+      "export": "ok",
+      "elapsed_s": 1.18,
+      "job_id": "11982e8c-ac26-4ffe-80d7-7fc59533abff",
+      "error": null
+    },
+    {
+      "round": 3,
+      "ok": true,
+      "status": "complete",
+      "findings": 1,
+      "decision": "failed",
+      "export": "ok",
+      "elapsed_s": 1.2,
+      "job_id": "3cc13126-ef41-4d02-a946-6d6fd10f8d18",
+      "error": null
+    },
+    {
+      "round": 4,
+      "ok": true,
+      "status": "complete",
+      "findings": 1,
+      "decision": "failed",
+      "export": "ok",
+      "elapsed_s": 1.23,
+      "job_id": "9c70d0a2-9ee7-44b7-9c3c-055b20e4e194",
+      "error": null
+    },
+    {
+      "round": 5,
+      "ok": true,
+      "status": "complete",
+      "findings": 1,
+      "decision": "failed",
+      "export": "ok",
+      "elapsed_s": 1.23,
+      "job_id": "daa84b53-256e-4bee-8421-7d5a25e7c037",
+      "error": null
+    },
+    {
+      "round": 6,
+      "ok": true,
+      "status": "complete",
+      "findings": 1,
+      "decision": "failed",
+      "export": "ok",
+      "elapsed_s": 1.21,
+      "job_id": "e8cc02d6-95b3-4950-af5c-cc5b32018b41",
+      "error": null
+    },
+    {
+      "round": 7,
+      "ok": true,
+      "status": "complete",
+      "findings": 1,
+      "decision": "failed",
+      "export": "ok",
+      "elapsed_s": 1.22,
+      "job_id": "d50cb917-c3be-4393-b36e-9bc40e39428b",
+      "error": null
+    },
+    {
+      "round": 8,
+      "ok": true,
+      "status": "complete",
+      "findings": 1,
+      "decision": "failed",
+      "export": "ok",
+      "elapsed_s": 1.2,
+      "job_id": "8b5dc991-5123-4833-93cb-4924b0e4ed7e",
+      "error": null
+    },
+    {
+      "round": 9,
+      "ok": true,
+      "status": "complete",
+      "findings": 1,
+      "decision": "failed",
+      "export": "ok",
+      "elapsed_s": 1.16,
+      "job_id": "df9d2aa0-88de-4d53-8406-fae61debdf9d",
+      "error": null
+    },
+    {
+      "round": 10,
+      "ok": true,
+      "status": "complete",
+      "findings": 1,
+      "decision": "failed",
+      "export": "ok",
+      "elapsed_s": 1.23,
+      "job_id": "c5b0e5f0-24c8-4021-a5aa-09ce9c3ecb32",
+      "error": null
+    },
+    {
+      "round": 11,
+      "ok": true,
+      "status": "complete",
+      "findings": 1,
+      "decision": "failed",
+      "export": "ok",
+      "elapsed_s": 1.2,
+      "job_id": "ec346e19-98e9-4f66-baf2-8b419c126ce5",
+      "error": null
+    },
+    {
+      "round": 12,
+      "ok": true,
+      "status": "complete",
+      "findings": 1,
+      "decision": "failed",
+      "export": "ok",
+      "elapsed_s": 1.26,
+      "job_id": "3be3f1b9-21ca-459b-a30d-f3e704a6acf3",
+      "error": null
+    },
+    {
+      "round": 13,
+      "ok": true,
+      "status": "complete",
+      "findings": 1,
+      "decision": "failed",
+      "export": "ok",
+      "elapsed_s": 1.23,
+      "job_id": "05ea0c84-e7da-4fe1-9c19-2a9ab0f9e0ca",
+      "error": null
+    },
+    {
+      "round": 14,
+      "ok": true,
+      "status": "complete",
+      "findings": 1,
+      "decision": "failed",
+      "export": "ok",
+      "elapsed_s": 1.19,
+      "job_id": "e245a582-000f-406c-90cd-caa885566434",
+      "error": null
+    },
+    {
+      "round": 15,
+      "ok": true,
+      "status": "complete",
+      "findings": 1,
+      "decision": "failed",
+      "export": "ok",
+      "elapsed_s": 1.23,
+      "job_id": "dd2117a7-e51f-4532-bf65-c79c4f85b75d",
+      "error": null
+    },
+    {
+      "round": 16,
+      "ok": true,
+      "status": "complete",
+      "findings": 1,
+      "decision": "failed",
+      "export": "ok",
+      "elapsed_s": 1.34,
+      "job_id": "3f0e5e84-91f2-4db5-96c4-8ead8cae2a5e",
+      "error": null
+    },
+    {
+      "round": 17,
+      "ok": true,
+      "status": "complete",
+      "findings": 1,
+      "decision": "failed",
+      "export": "ok",
+      "elapsed_s": 1.23,
+      "job_id": "d6f8228b-bd98-47fc-bc07-fafda707923b",
+      "error": null
+    },
+    {
+      "round": 18,
+      "ok": true,
+      "status": "complete",
+      "findings": 1,
+      "decision": "failed",
+      "export": "ok",
+      "elapsed_s": 1.24,
+      "job_id": "7f12da8e-5c47-4e54-a326-3822307b33c2",
+      "error": null
+    },
+    {
+      "round": 19,
+      "ok": true,
+      "status": "complete",
+      "findings": 1,
+      "decision": "failed",
+      "export": "ok",
+      "elapsed_s": 1.23,
+      "job_id": "3cb37ff1-e61e-46df-a064-c7db469fbcb3",
+      "error": null
+    },
+    {
+      "round": 20,
+      "ok": true,
+      "status": "complete",
+      "findings": 1,
+      "decision": "failed",
+      "export": "ok",
+      "elapsed_s": 1.23,
+      "job_id": "aced09fa-c7f6-4ef5-b349-9e2839b27caf",
+      "error": null
+    }
+  ]
+}

@@ -78,14 +78,16 @@ def main(argv: list[str] | None = None) -> int:
 
     qa_failed = False
     if args.qa_run_file:
-        qa = calculate_qa_metrics(args.qa_gold_file, _read_json(args.qa_run_file))
+        qa_run = _read_json(args.qa_run_file)
+        qa = calculate_qa_metrics(args.qa_gold_file, qa_run)
         qa_path = _write_report(output_dir, "qa_metrics.json", qa)
         _write_report(output_dir, "qa_cases.json", {"cases": qa["cases"]})
         failed_cases = [case for case in qa["cases"] if not case["passed"]]
         report_lines = [
             "# FR-07 单文档问答测评报告", "",
             f"- 金标集：`{qa['dataset_id']}`", f"- 金标 SHA-256：`{qa['dataset_sha256']}`",
-            f"- 样本数：{qa['case_count']}", "", "## 指标", "",
+            f"- 样本数：{qa['case_count']}", f"- 运行类型：`{qa_run.get('run_kind', 'unspecified')}`",
+            "", "## 指标", "",
             "| 指标 | 结果 | 门槛 |", "| --- | ---: | ---: |",
             f"| 答案准确率 | {qa['answer_accuracy']:.2%} | >=90% |",
             f"| 原文引用逐字一致率 | {qa['citation_exact_match_rate']:.2%} | 100% |",
@@ -97,6 +99,13 @@ def main(argv: list[str] | None = None) -> int:
             f"| SSE 终态唯一率 | {qa['sse_unique_terminal_rate']:.2%} | 100% |",
             "", f"## 结论", "", "达标。" if qa["passed"] else "未达标。",
         ]
+        if qa_run.get("run_kind") == "deterministic_contract_fixture":
+            report_lines.extend([
+                "", "## 限制与未决项", "",
+                "- 本轮为确定性契约 fixture，验证引用逐字/span、locator、拒答统计和 SSE 唯一终态的程序化门禁。",
+                "- 本轮不代表真实 LLM/Embedding 语义质量；当前环境未配置 provider API key，真实模型运行未执行。",
+                "- 配置 provider 并产出相同 `answers` schema 的 run file 后，可用本报告命令原样复测。",
+            ])
         if failed_cases:
             report_lines.extend(["", "## 失败样本", ""] + [
                 f"- `{case['question_id']}`：{', '.join(case['failures'])}" for case in failed_cases

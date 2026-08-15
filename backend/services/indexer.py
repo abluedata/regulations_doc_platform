@@ -11,11 +11,14 @@ import time
 import requests
 
 from core.config import (
+    CHUNK_OVERLAP,
+    CHUNK_SIZE,
     DOCS_DIR,
     EMBED_API_BASE,
     EMBED_API_KEY,
     EMBED_DIMS,
     EMBED_IS_JINA,
+    EMBED_MAX_CHARS,
     EMBED_MODEL,
     ES_HOST,
     ES_PASS,
@@ -23,18 +26,15 @@ from core.config import (
     INDEX_NAME,
 )
 from services.chunk_strategy import chunk_documents
+from services.utils import truncate_for_embedding
 from elasticsearch import Elasticsearch
+from core.http_client import elasticsearch_client, requests_session
 
 
 # ─── ES 连接 ────────────────────────────────────────────────
 
 def get_es() -> Elasticsearch:
-    es = Elasticsearch(
-        ES_HOST,
-        basic_auth=(ES_USER, ES_PASS),
-        verify_certs=False,
-        ssl_show_warn=False,
-    )
+    es = elasticsearch_client(ES_HOST, username=ES_USER, password=ES_PASS)
     if not es.ping():
         raise RuntimeError(f"❌ 无法连接 ES: {ES_HOST}")
     print(f"✅ ES 已连接  (v{es.info()['version']['number']})")
@@ -62,6 +62,11 @@ def get_embeddings(texts: list[str], task: str = "retrieval.passage") -> list[li
     if not EMBED_API_KEY:
         raise ValueError("EMBED_API_KEY 未设置！请在 .env 或环境变量中配置 EMBED_API_KEY")
 
+    # token 安全截断兜底：BAAI/bge-large-zh-v1.5 上下文 512 token，
+    # 超 ~616 字符即被 SiliconFlow 拒绝（HTTP 400 code 20015）。
+    # 截断保留 [文档]/[章节] 标题头部，确保任何超限 chunk 都不会导致入库失败。
+    texts = [truncate_for_embedding(t, EMBED_MAX_CHARS) for t in texts]
+
     # 每次最多 100 条，分批
     all_embeddings = []
     batch_size = 100
@@ -73,7 +78,8 @@ def get_embeddings(texts: list[str], task: str = "retrieval.passage") -> list[li
         if EMBED_IS_JINA:
             payload["task"] = task
             payload["dimensions"] = EMBED_DIMS
-        resp = requests.post(url, headers=EMBED_HEADERS, json=payload, timeout=60)
+        with requests_session() as session:
+            resp = session.post(url, headers=EMBED_HEADERS, json=payload, timeout=60)
         if resp.status_code != 200:
             raise RuntimeError(f"Embedding API 错误 ({resp.status_code}): {resp.text}")
 
@@ -230,7 +236,7 @@ def main():
     docs = read_all_docs()
 
     # 4. 分块
-    print(f"\n✂️  分块 (chunk_size={512}, overlap={128}) ...")
+    print(f"\n✂️  分块 (chunk_size={CHUNK_SIZE}, overlap={CHUNK_OVERLAP}) ...")
     chunks = chunk_documents(docs)
     print(f"   → {len(chunks)} 个 chunk")
 

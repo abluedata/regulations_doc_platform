@@ -14,6 +14,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
+# The business API is intentionally local-only; app startup validates this too.
+export API_BIND_HOST="127.0.0.1"
+
 MINERU_PORT=8001
 ADAPTER_PORT=8003
 API_PORT=8002

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   Download,
@@ -8,42 +8,69 @@ import {
   ZoomIn,
   ZoomOut,
 } from '@element-plus/icons-vue'
-import RiskCard, { type RiskAction } from '@/components/review/RiskCard.vue'
+import RiskCard from '@/components/review/RiskCard.vue'
 import ReviewAssistant from '@/components/review/ReviewAssistant.vue'
 import ReviewFooter from '@/components/review/ReviewFooter.vue'
 import ReviewStepper from '@/components/review/ReviewStepper.vue'
 import { useReviewStore } from '@/stores/review'
+import { downloadExportArtifact } from '@/api/review'
 
 const review = useReviewStore()
 const router = useRouter()
 const route = useRoute()
-const selectedRiskId = ref('unlimited-liability')
-const riskActions = ref<Record<string, RiskAction>>({})
+const selectedRiskId = ref('')
 const zoom = ref(100)
 const activeAnalysisTab = ref<'findings' | 'assistant'>('findings')
-const selectedRisk = computed(() => review.risks.find((risk) => risk.id === selectedRiskId.value))
-let analysisTimer: ReturnType<typeof setTimeout> | null = null
+const loading = ref(false)
+const loadError = ref('')
+const exporting = ref(false)
+const exportError = ref('')
 
-function scheduleAnalysisCompletion() {
-  if (analysisTimer || review.analysisStatus !== 'running') return
-  analysisTimer = setTimeout(() => {
-    review.completeAnalysis()
-    analysisTimer = null
-  }, 450)
-}
+const hasJob = computed(() => Boolean(review.analysisJobId))
+const selectedRisk = computed(() => review.risks.find((risk) => risk.id === selectedRiskId.value))
+const findingCount = computed(() => review.risks.length)
+const overallRisk = computed(() => {
+  if (!review.risks.length) return '无'
+  if (review.risks.some((risk) => risk.level === 'high')) return '高'
+  if (review.risks.some((risk) => risk.level === 'medium')) return '中'
+  return '低'
+})
+const documentLabel = computed(() => {
+  const names = review.files.filter((file) => file.status !== 'failed').map((file) => file.name)
+  return names.length ? names.join('、') : '尚未关联待审文档'
+})
+const analysisInProgress = computed(() =>
+  ['loading', 'queued', 'parsing', 'running'].includes(review.analysisStatus),
+)
 
 onMounted(() => {
   review.goToStep(Number(route.meta.reviewStep) || 4)
-  if (review.analysisStatus === 'idle') review.startAnalysis()
-  scheduleAnalysisCompletion()
+  if (review.analysisJobId) void loadResults()
 })
 
-onBeforeUnmount(() => {
-  if (analysisTimer) clearTimeout(analysisTimer)
-})
+async function loadResults() {
+  loading.value = true
+  loadError.value = ''
+  try {
+    await review.refreshJob()
+    await review.loadFindings()
+    if (!selectedRiskId.value && review.risks[0]) selectedRiskId.value = review.risks[0].id
+  } catch (err) {
+    loadError.value = err instanceof Error ? err.message : '审查结果加载失败'
+  } finally {
+    loading.value = false
+  }
+}
 
 function selectRisk(id: string) {
   selectedRiskId.value = id
+  const risk = review.risks.find((item) => item.id === id)
+  if (risk?.evidence) locateCitation(risk.evidence)
+}
+
+function locateCitation(anchor: Record<string, unknown>) {
+  activeAnalysisTab.value = 'findings'
+  window.dispatchEvent(new CustomEvent('review:locate-evidence', { detail: anchor }))
 }
 
 function approveDraft() {
@@ -54,17 +81,33 @@ function rejectChanges() {
   review.rejectChanges()
 }
 
-function exportReport() {
-  // 演示页面只展示导出入口，不生成真实报告或调用后端。
-}
-
-function adjustZoom(amount: number) {
-  zoom.value = Math.min(120, Math.max(80, zoom.value + amount))
+async function exportReport() {
+  if (!review.analysisJobId || exporting.value) return
+  exporting.value = true
+  exportError.value = ''
+  try {
+    const { data: artifact } = await review.exportReport()
+    await downloadExportArtifact(artifact.id, artifact.filename || `review-${review.analysisJobId}.md`)
+  } catch (err) {
+    exportError.value = err instanceof Error ? err.message : '报告导出失败'
+  } finally {
+    exporting.value = false
+  }
 }
 
 async function goPrevious() {
   review.previousStep()
   await router.push({ name: 'review-rules' })
+}
+
+function goToUpload() {
+  review.goToStep(1)
+  void router.push({ name: 'review-upload' })
+}
+
+// 纯阅读缩放：仅调整正文显示比例，不参与证据定位。
+function adjustZoom(amount: number) {
+  zoom.value = Math.min(120, Math.max(80, zoom.value + amount))
 }
 </script>
 
@@ -74,134 +117,142 @@ async function goPrevious() {
 
     <div class="console-header">
       <div>
-        <div class="console-title-row">
-          <h1>AI 审查分析</h1>
-          <span class="demo-badge">演示分析</span>
-        </div>
-        <p>服务级别协议_v4.pdf · 最后修改：2023 年 10 月 24 日 · 14 页</p>
+        <h1>AI 审查分析</h1>
+        <p>{{ documentLabel }}</p>
       </div>
-      <span class="engine-badge">BETA ENGINE 2.4</span>
     </div>
 
-    <div class="console-layout">
-      <main class="reader-panel">
-        <div class="reader-toolbar">
-          <div class="reader-toolbar__title"><strong>文档正文</strong><span>第 3 节 / 14</span></div>
-          <div class="reader-tools" aria-label="阅读工具">
-            <button type="button" aria-label="缩小" @click="adjustZoom(-10)"><el-icon><ZoomOut /></el-icon></button>
-            <span>{{ zoom }}%</span>
-            <button type="button" aria-label="放大" @click="adjustZoom(10)"><el-icon><ZoomIn /></el-icon></button>
-            <button type="button" aria-label="打印"><el-icon><Printer /></el-icon></button>
-            <button type="button" aria-label="更多"><el-icon><MoreFilled /></el-icon></button>
-          </div>
-        </div>
+    <div v-if="!hasJob" class="console-empty">
+      <h2>尚未开始审查</h2>
+      <p>请先返回第一步上传待审文档并启动分析，审查结果将在此处展示。</p>
+      <el-button data-test="back-to-upload" type="primary" @click="goToUpload">返回文档上传</el-button>
+    </div>
 
-        <article class="document-paper" :style="{ '--document-scale': `${zoom / 100}` }">
-          <div class="paper-heading">
-            <span>MASTER SERVICE AGREEMENT</span>
-            <small>服务级别协议</small>
-          </div>
-          <section>
-            <h2>1. DEFINITIONS.</h2>
-            <p>"Services" means the consulting and technical implementation services provided by Provider to Client as described in the applicable Statement of Work. "Deliverables" means all work product, reports, software, and other materials developed specifically for Client.</p>
-          </section>
-          <section>
-            <h2>2. SCOPE OF SERVICES.</h2>
-            <p>Provider shall provide the Services and Deliverables set forth in each SOW. Each SOW shall be deemed a part of this Agreement. In the event of a conflict between this Agreement and an SOW, this Agreement shall prevail unless the SOW specifically states otherwise.</p>
-          </section>
-          <section class="highlight-block highlight-block--danger">
-            <h2>3. LIMITATION OF LIABILITY.</h2>
-            <p>Notwithstanding any provision to the contrary, Provider's total aggregate liability arising out of or related to this Agreement shall be limited to $5,000,000 USD. Client waives all claims for incidental, consequential, or punitive damages under any legal theory whatsoever.</p>
-          </section>
-          <section>
-            <h2>4. INTELLECTUAL PROPERTY.</h2>
-            <p>Client shall own all right, title and interest in and to the Deliverables upon full payment of the applicable fees. Provider retains all rights to its pre-existing materials, tools, and methodologies used in the performance of the Services.</p>
-          </section>
-          <section class="highlight-block highlight-block--info">
-            <h2>5. INDEMNIFICATION.</h2>
-            <p>Provider shall indemnify, defend, and hold harmless Client from claims arising from a breach of this Agreement.</p>
-          </section>
-        </article>
-      </main>
-
-      <aside class="findings-panel">
-        <div class="findings-heading">
-          <div><h2>AI 审查分析</h2><span class="demo-badge">演示分析</span></div>
-          <span class="engine-badge">BETA ENGINE 2.4</span>
-        </div>
-        <div class="analysis-tabs" role="tablist" aria-label="审查分析视图">
-          <button
-            id="findings-tab"
-            type="button"
-            role="tab"
-            data-test="findings-tab"
-            :aria-selected="activeAnalysisTab === 'findings'"
-            aria-controls="findings-panel-content"
-            :class="{ 'analysis-tab--active': activeAnalysisTab === 'findings' }"
-            @click="activeAnalysisTab = 'findings'"
-          >审查发现</button>
-          <button
-            id="assistant-tab"
-            type="button"
-            role="tab"
-            data-test="assistant-tab"
-            :aria-selected="activeAnalysisTab === 'assistant'"
-            aria-controls="assistant-panel-content"
-            :class="{ 'analysis-tab--active': activeAnalysisTab === 'assistant' }"
-            @click="activeAnalysisTab = 'assistant'"
-          >问答助手</button>
-        </div>
-
-        <div
-          v-if="activeAnalysisTab === 'findings'"
-          id="findings-panel-content"
-          class="findings-content"
-          role="tabpanel"
-          aria-labelledby="findings-tab"
-        >
-          <div class="metrics-grid">
-            <div><span>发现问题</span><strong>12</strong></div>
-            <div><span>风险评分</span><strong class="risk-score">中</strong></div>
-          </div>
-          <div class="findings-section">
-            <div class="findings-section__title"><h3>核心风险</h3><span>点击查看条款</span></div>
-            <div class="risk-list">
-              <RiskCard
-                v-for="risk in review.risks"
-                :key="risk.id"
-                :risk="risk"
-                :action="riskActions[risk.id] ?? 'pending'"
-                @select="selectRisk"
-              />
+    <template v-else>
+      <div class="console-layout">
+        <main class="reader-panel">
+          <div class="reader-toolbar">
+            <div class="reader-toolbar__title"><strong>文档正文</strong></div>
+            <div class="reader-tools" aria-label="阅读工具">
+              <button type="button" aria-label="缩小" @click="adjustZoom(-10)"><el-icon><ZoomOut /></el-icon></button>
+              <span>{{ zoom }}%</span>
+              <button type="button" aria-label="放大" @click="adjustZoom(10)"><el-icon><ZoomIn /></el-icon></button>
+              <button type="button" aria-label="打印"><el-icon><Printer /></el-icon></button>
+              <button type="button" aria-label="更多"><el-icon><MoreFilled /></el-icon></button>
             </div>
           </div>
-          <div v-if="selectedRiskId" class="selected-risk-note">
-            已定位到 {{ selectedRisk?.section }}，正文中的高亮段落与此发现对应。
-          </div>
-          <div class="console-actions">
-            <el-button type="danger" plain :disabled="review.analysisStatus !== 'complete'" @click="rejectChanges">拒绝更改</el-button>
-            <el-button
-              data-test="approve-draft"
-              type="primary"
-              :disabled="review.analysisStatus !== 'complete'"
-              @click="approveDraft"
-            >批准草案</el-button>
-            <el-button plain @click="exportReport">
-              <el-icon aria-hidden="true"><Download /></el-icon>
-              导出详细报告
-            </el-button>
-          </div>
-        </div>
-        <div v-else id="assistant-panel-content" role="tabpanel" aria-labelledby="assistant-tab">
-          <ReviewAssistant :risk="selectedRisk" />
-        </div>
-      </aside>
-    </div>
 
-    <ReviewFooter previous-label="返回规则设置" next-label="分析完成" :next-disabled="true" @previous="goPrevious">
-      <span v-if="review.analysisStatus === 'running'">演示分析正在运行，请稍候…</span>
-      <span v-else>结果仅用于界面演示，不代表真实后端审查结论。</span>
-    </ReviewFooter>
+          <article class="document-paper" :style="{ '--document-scale': `${zoom / 100}` }">
+            <div class="paper-heading">
+              <span>MASTER SERVICE AGREEMENT</span>
+              <small>服务级别协议</small>
+            </div>
+            <section>
+              <h2>1. DEFINITIONS.</h2>
+              <p>"Services" means the consulting and technical implementation services provided by Provider to Client as described in the applicable Statement of Work. "Deliverables" means all work product, reports, software, and other materials developed specifically for Client.</p>
+            </section>
+            <section>
+              <h2>2. SCOPE OF SERVICES.</h2>
+              <p>Provider shall provide the Services and Deliverables set forth in each SOW. Each SOW shall be deemed a part of this Agreement. In the event of a conflict between this Agreement and an SOW, this Agreement shall prevail unless the SOW specifically states otherwise.</p>
+            </section>
+            <section>
+              <h2>3. LIMITATION OF LIABILITY.</h2>
+              <p>Notwithstanding any provision to the contrary, Provider's total aggregate liability arising out of or related to this Agreement shall be limited to $5,000,000 USD. Client waives all claims for incidental, consequential, or punitive damages under any legal theory whatsoever.</p>
+            </section>
+            <section>
+              <h2>4. INTELLECTUAL PROPERTY.</h2>
+              <p>Client shall own all right, title and interest in and to the Deliverables upon full payment of the applicable fees. Provider retains all rights to its pre-existing materials, tools, and methodologies used in the performance of the Services.</p>
+            </section>
+            <section>
+              <h2>5. INDEMNIFICATION.</h2>
+              <p>Provider shall indemnify, defend, and hold harmless Client from claims arising from a breach of this Agreement.</p>
+            </section>
+          </article>
+        </main>
+
+        <aside class="findings-panel">
+          <div class="findings-heading">
+            <h2>审查结果</h2>
+          </div>
+          <div class="analysis-tabs" role="tablist" aria-label="审查分析视图">
+            <button
+              id="findings-tab"
+              type="button"
+              role="tab"
+              data-test="findings-tab"
+              :aria-selected="activeAnalysisTab === 'findings'"
+              aria-controls="findings-panel-content"
+              :class="{ 'analysis-tab--active': activeAnalysisTab === 'findings' }"
+              @click="activeAnalysisTab = 'findings'"
+            >审查发现</button>
+            <button
+              id="assistant-tab"
+              type="button"
+              role="tab"
+              data-test="assistant-tab"
+              :aria-selected="activeAnalysisTab === 'assistant'"
+              aria-controls="assistant-panel-content"
+              :class="{ 'analysis-tab--active': activeAnalysisTab === 'assistant' }"
+              @click="activeAnalysisTab = 'assistant'"
+            >问答助手</button>
+          </div>
+
+          <div
+            v-if="activeAnalysisTab === 'findings'"
+            id="findings-panel-content"
+            class="findings-content"
+            role="tabpanel"
+            aria-labelledby="findings-tab"
+          >
+            <div class="metrics-grid">
+              <div><span>发现问题</span><strong>{{ findingCount }}</strong></div>
+              <div><span>风险评分</span><strong class="risk-score">{{ overallRisk }}</strong></div>
+            </div>
+            <div class="findings-section">
+              <div class="findings-section__title"><h3>审查发现</h3><span>{{ findingCount }} 项</span></div>
+              <div class="risk-list">
+                <RiskCard
+                  v-for="risk in review.risks"
+                  :key="risk.id"
+                  :risk="risk"
+                  :action="risk.action ?? 'pending'"
+                  @select="selectRisk"
+                />
+              </div>
+              <div v-if="loadError" class="findings-empty findings-empty--error" role="alert">{{ loadError }}</div>
+              <div v-else-if="loading && !review.risks.length" class="findings-empty">正在加载审查结果…</div>
+              <div v-else-if="!review.risks.length" class="findings-empty">暂无审查发现</div>
+            </div>
+            <div v-if="selectedRisk" class="selected-risk-note">
+              已选中「{{ selectedRisk.section }}」{{ selectedRisk.title }}
+            </div>
+            <p v-if="exportError" class="console-error" role="alert">{{ exportError }}</p>
+            <div class="console-actions">
+              <el-button type="danger" plain :disabled="review.analysisStatus !== 'complete' && review.analysisStatus !== 'complete_degraded'" @click="rejectChanges">拒绝更改</el-button>
+              <el-button
+                data-test="approve-draft"
+                type="primary"
+                :disabled="review.analysisStatus !== 'complete' && review.analysisStatus !== 'complete_degraded'"
+                @click="approveDraft"
+              >批准草案</el-button>
+              <el-button data-test="export-report" plain :loading="exporting" @click="exportReport">
+                <el-icon aria-hidden="true"><Download /></el-icon>
+                导出详细报告
+              </el-button>
+            </div>
+          </div>
+          <div v-else id="assistant-panel-content" role="tabpanel" aria-labelledby="assistant-tab">
+            <ReviewAssistant :risk="selectedRisk" @locate="locateCitation" />
+          </div>
+        </aside>
+      </div>
+
+      <ReviewFooter previous-label="返回规则设置" next-label="分析完成" :next-disabled="true" @previous="goPrevious">
+        <span v-if="review.analysisStatus === 'failed'">{{ review.error || '分析失败，请返回重试。' }}</span>
+        <span v-else-if="analysisInProgress">审查分析进行中，请稍候…</span>
+        <span v-else>分析完成，共发现 {{ findingCount }} 项风险。</span>
+      </ReviewFooter>
+    </template>
   </div>
 </template>
 
@@ -219,19 +270,6 @@ async function goPrevious() {
   margin-bottom: 20px;
 }
 
-.console-title-row,
-.findings-heading > div,
-.reader-toolbar__title,
-.reader-tools,
-.findings-section__title {
-  display: flex;
-  align-items: center;
-}
-
-.console-title-row {
-  gap: 12px;
-}
-
 .console-header h1 {
   margin: 0 0 5px;
   font-size: 34px;
@@ -243,27 +281,30 @@ async function goPrevious() {
   font-size: 12px;
 }
 
-.demo-badge,
-.engine-badge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 24px;
-  padding: 3px 9px;
-  border-radius: var(--radius-sm);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.03em;
-  white-space: nowrap;
+.console-empty {
+  display: grid;
+  min-height: 420px;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  padding: 48px 24px;
+  border: 1px solid var(--outline-soft);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  text-align: center;
 }
 
-.demo-badge {
-  color: var(--action);
-  background: var(--action-soft);
+.console-empty h2 {
+  margin: 0;
+  font-size: 24px;
 }
 
-.engine-badge {
-  color: var(--action);
-  background: var(--action-soft);
+.console-empty p {
+  max-width: 460px;
+  margin: 0 0 12px;
+  color: var(--ink-muted);
+  font-size: 14px;
+  line-height: 1.7;
 }
 
 .console-layout {
@@ -292,17 +333,19 @@ async function goPrevious() {
 }
 
 .reader-toolbar__title {
-  gap: 10px;
-}
-
-.reader-toolbar__title span,
-.reader-tools > span {
-  color: var(--ink-muted);
-  font-size: 11px;
+  display: flex;
+  align-items: center;
 }
 
 .reader-tools {
+  display: flex;
+  align-items: center;
   gap: 10px;
+}
+
+.reader-tools > span {
+  color: var(--ink-muted);
+  font-size: 11px;
 }
 
 .reader-tools button {
@@ -374,22 +417,6 @@ async function goPrevious() {
   line-height: 1.85;
 }
 
-.highlight-block {
-  padding: 16px 18px;
-  border: 1px solid var(--outline-soft);
-  border-radius: var(--radius-sm);
-}
-
-.highlight-block--danger {
-  border-color: var(--danger-outline);
-  background: var(--danger-soft);
-}
-
-.highlight-block--info {
-  border-color: var(--action-outline);
-  background: var(--action-subtle);
-}
-
 .findings-panel {
   display: flex;
   min-width: 0;
@@ -442,11 +469,6 @@ async function goPrevious() {
   border-bottom: 1px solid var(--outline-soft);
 }
 
-.findings-heading > div {
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
 .findings-heading h2 {
   margin: 0;
   font-size: 20px;
@@ -490,6 +512,8 @@ async function goPrevious() {
 }
 
 .findings-section__title {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
 }
@@ -509,6 +533,22 @@ async function goPrevious() {
   gap: 10px;
 }
 
+.findings-empty {
+  padding: 20px 12px;
+  border: 1px dashed var(--outline);
+  border-radius: var(--radius-sm);
+  color: var(--ink-muted);
+  background: var(--surface-low);
+  font-size: 12px;
+  text-align: center;
+}
+
+.findings-empty--error {
+  border-color: var(--danger-outline);
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
 .selected-risk-note {
   margin: 0 20px 14px;
   padding: 10px 12px;
@@ -517,6 +557,12 @@ async function goPrevious() {
   background: var(--surface-low);
   font-size: 11px;
   line-height: 1.55;
+}
+
+.console-error {
+  margin: 0 20px 12px;
+  color: var(--danger);
+  font-size: 11px;
 }
 
 .console-actions {
@@ -548,17 +594,13 @@ async function goPrevious() {
 }
 
 @media (max-width: 680px) {
-  .console-title-row h1 {
+  .console-header h1 {
     font-size: 28px;
   }
 
   .console-header {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .console-header .engine-badge {
-    align-self: flex-start;
   }
 
   .console-layout {

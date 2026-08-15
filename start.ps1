@@ -186,6 +186,7 @@ $env:MINERU_API_OUTPUT_ROOT = Join-Path $Root ".data\mineru_output"
 $env:CUDA_VISIBLE_DEVICES = ""
 
 $commonEnv = @{
+    API_BIND_HOST          = "127.0.0.1"
     MINERU_MODEL_SOURCE    = $env:MINERU_MODEL_SOURCE
     MINERU_BACKEND         = "pipeline"
     MINERU_API_URL         = $env:MINERU_API_URL

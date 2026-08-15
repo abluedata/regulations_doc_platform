@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "dataset_id": "termination_agreement_gold_v1",
+  "doc_type": "termination_agreement",
+  "created_at": "2026-08-15T00:00:00Z",
+  "annotation_method": "single annotator plus independent reviewer",
+  "min_documents": 30,
+  "documents": [
+    {
+      "path": "termination_agreement_001.json",
+      "doc_id": "termination-agreement-001",
+      "sha256": "ac9c2b4dd3b5335109e2eb19e6b9458df2f03171df108ad96b75b0e637b1c56d"
+    },
+    {
+      "path": "termination_agreement_002.json",
+      "doc_id": "termination-agreement-002",
+      "sha256": "a3765995578d718cc2cb1144d1d64a9c517f97822e3ed175c7980d6a8760a0b1"
+    },
+    {
+      "path": "termination_agreement_003.json",
+      "doc_id": "termination-agreement-003",
+      "sha256": "045acf0cc9f12ba3446c1e1dea30ea369a3402f7448674c0a62887c95758c518"
+    },
+    {
+      "path": "termination_agreement_004.json",
+      "doc_id": "termination-agreement-004",
+      "sha256": "122441de6628e8209165df0f649aa911fc231f21464bf85364ad783710bf21a0"
+    },
+    {
+      "path": "termination_agreement_005.json",
+      "doc_id": "termination-agreement-005",
+      "sha256": "72ba40ca19723671df100c5e10f751565145a543a0b37256158ca9051ada0cde"
+    },
+    {
+      "path": "termination_agreement_006.json",
+      "doc_id": "termination-agreement-006",
+      "sha256": "623c0b0b055ae3502249a381091f2e8ced22025a77059fba03550a27fafb12f2"
+    },
+    {
+      "path": "termination_agreement_007.json",
+      "doc_id": "termination-agreement-007",
+      "sha256": "5c3b9df02bb4e1a54297fd35e742d29f257436759327e7b891dc909dfc8d8ee0"
+    },
+    {
+      "path": "termination_agreement_008.json",
+      "doc_id": "termination-agreement-008",
+      "sha256": "3d168037191a0cf58e2242b711e706cbcf4aa45746c3aa44afc2b8d5b92981b7"
+    },
+    {
+      "path": "termination_agreement_009.json",
+      "doc_id": "termination-agreement-009",
+      "sha256": "4ab2afea85c93382c5e4c7233a5b049725b1999b0829f6eccd34569b1309fa75"
+    },
+    {
+      "path": "termination_agreement_010.json",
+      "doc_id": "termination-agreement-010",
+      "sha256": "39fa3d9b3935b34e1632ec28034f29ed5e24ef68a874465f971f36e0ed1be4ba"
+    },
+    {
+      "path": "termination_agreement_011.json",
+      "doc_id": "termination-agreement-011",
+      "sha256": "15e4b2691218e746d2ddbf4ff07137419b65cc892d3af401204f687260e26742"
+    },
+    {
+      "path": "termination_agreement_012.json",
+      "doc_id": "termination-agreement-012",
+      "sha256": "20bd4a0e19cd58f629f9de32d3907d3b61a755a2693a40991168b05dc1752e7e"
+    },
+    {
+      "path": "termination_agreement_013.json",
+      "doc_id": "termination-agreement-013",
+      "sha256": "169956c049d406b04d2661decec8198bdb7c7d6931203c86b2f1a9cd1786ef8b"
+    },
+    {
+      "path": "termination_agreement_014.json",
+      "doc_id": "termination-agreement-014",
+      "sha256": "28dacf0b22876bbaca59b40dadbfbf91ad8cbdb4613e5694aeff3ecd06566cd8"
+    },
+    {
+      "path": "termination_agreement_015.json",
+      "doc_id": "termination-agreement-015",
+      "sha256": "2b785656240686c152c4dae31c5d72707ea24cde0679cd8a9f2d5707c6d625be"
+    },
+    {
+      "path": "termination_agreement_016.json",
+      "doc_id": "termination-agreement-016",
+      "sha256": "e60502d73a7b702c32a60be189d1ee7f7fc556bd0d146b92ba9a41f9ee82c994"
+    },
+    {
+      "path": "termination_agreement_017.json",
+      "doc_id": "termination-agreement-017",
+      "sha256": "d067333df48fc84ed2954f29c5d2d1bedfc79e930a8f84d8d167b00969a937c5"
+    },
+    {
+      "path": "termination_agreement_018.json",
+      "doc_id": "termination-agreement-018",
+      "sha256": "a5f248aaa14fff9782453d15125ae265b1b3e20d625cb4cee2635276e87140a9"
+    },
+    {
+      "path": "termination_agreement_019.json",
+      "doc_id": "termination-agreement-019",
+      "sha256": "c241fa194e339b7d7a3d9c933524203094dafb626508fc56efaf17776aca6518"
+    },
+    {
+      "path": "termination_agreement_020.json",
+      "doc_id": "termination-agreement-020",
+      "sha256": "17cde887033e23da1220b18d417ac243bf34c87e4f288613d8a37e3de31682c9"
+    },
+    {
+      "path": "termination_agreement_021.json",
+      "doc_id": "termination-agreement-021",
+      "sha256": "e814fbb3bb619c224832a57bad1eaf66dfad7331c52caa2b73a8e4b34ba20c2f"
+    },
+    {
+      "path": "termination_agreement_022.json",
+      "doc_id": "termination-agreement-022",
+      "sha256": "c8bd2e47e7a8246d238732f8415b75c7dbfcb502ff57faf7dd0935a79d8d55e0"
+    },
+    {
+      "path": "termination_agreement_023.json",
+      "doc_id": "termination-agreement-023",
+      "sha256": "f985c05a73066064ec7eed185e745350deb41210d16a4dd7b0ddd42efead383a"
+    },
+    {
+      "path": "termination_agreement_024.json",
+      "doc_id": "termination-agreement-024",
+      "sha256": "a13008cb22c32e72a37a43c4ab9f2051ef2efa54311a4d4ad7e66e7c92849974"
+    },
+    {
+      "path": "termination_agreement_025.json",
+      "doc_id": "termination-agreement-025",
+      "sha256": "98eb8d11d9fbcb60488b5c5df0e113cd324d84b53b6bc3cd0181e1d8bab24a53"
+    },
+    {
+      "path": "termination_agreement_026.json",
+      "doc_id": "termination-agreement-026",
+      "sha256": "33cb5bb8512589a3cb5039209fb32bcb6fefaea91a14228fe712855a53db4db9"
+    },
+    {
+      "path": "termination_agreement_027.json",
+      "doc_id": "termination-agreement-027",
+      "sha256": "1d021e579ddcf4d6f90bb90f0bc84c720b865d75fb4093fcacb0a1202e4734fa"
+    },
+    {
+      "path": "termination_agreement_028.json",
+      "doc_id": "termination-agreement-028",
+      "sha256": "7bbb5833f6d814776d7cce5f9b10fea4f971799fcac42f1632b92099dc36bd1b"
+    },
+    {
+      "path": "termination_agreement_029.json",
+      "doc_id": "termination-agreement-029",
+      "sha256": "4a5890d28e47bb6c7b6de1b118db7e22cc4ac8f7211277e8150eb643d71f7473"
+    },
+    {
+      "path": "termination_agreement_030.json",
+      "doc_id": "termination-agreement-030",
+      "sha256": "8d27533f8f363aa30d566ae5cbfb0ce0c76bf023c77fb144fa35243f4d057250"
+    }
+  ],
+  "dataset_sha256": "dbef3f2a57f8cb5a4c29a92d0ade7c3fccbb74b306ec49f18106cd050dcd64a4"
+}
+

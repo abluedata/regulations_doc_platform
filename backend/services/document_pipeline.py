@@ -32,6 +32,7 @@ from core.config import (
     EMBED_API_KEY,
     EMBED_DIMS,
     EMBED_IS_JINA,
+    EMBED_MAX_CHARS,
     EMBED_MODEL,
     ES_HOST,
     ES_PASS,
@@ -44,6 +45,7 @@ from services.utils import (
     looks_like_html_table,
     normalize_table_fields,
     promote_raw_blocks,
+    truncate_for_embedding,
 )
 from services.document_store import (
     compute_version_id,
@@ -247,7 +249,8 @@ def _parse_via_mineru(path: Path) -> tuple[list[dict], int | None, str | None]:
 
     # trust_env=False：避免系统代理把 127.0.0.1 打成 502
     with path.open("rb") as f:
-        with httpx.Client(proxy=None, trust_env=False) as client:
+        from core.http_client import httpx_client
+        with httpx_client(proxy=None, trust_env=False) as client:
             resp = client.post(
                 f"{MINERU_URL}/parse",
                 files={"file": (path.name, f, mime)},
@@ -997,16 +1000,11 @@ def _ir_to_preview_md(ir: dict) -> str:
 def _index_chunks(
     doc_id: str, version_id: str, meta: dict, chunks: list[dict]
 ) -> None:
-    from elasticsearch import Elasticsearch
+    from core.http_client import elasticsearch_client, requests_session
     import json
     import requests
 
-    es = Elasticsearch(
-        ES_HOST,
-        basic_auth=(ES_USER, ES_PASS),
-        verify_certs=False,
-        ssl_show_warn=False,
-    )
+    es = elasticsearch_client(ES_HOST, username=ES_USER, password=ES_PASS)
     # 确保索引存在（兼容旧 mapping；新字段动态加入）
     if not es.indices.exists(index=INDEX_NAME):
         es.indices.create(
@@ -1106,14 +1104,9 @@ def _index_chunks(
 
 
 def delete_doc_from_index(doc_id: str) -> None:
-    from elasticsearch import Elasticsearch
+    from core.http_client import elasticsearch_client
 
-    es = Elasticsearch(
-        ES_HOST,
-        basic_auth=(ES_USER, ES_PASS),
-        verify_certs=False,
-        ssl_show_warn=False,
-    )
+    es = elasticsearch_client(ES_HOST, username=ES_USER, password=ES_PASS)
     if not es.indices.exists(index=INDEX_NAME):
         return
     response = es.delete_by_query(
@@ -1155,6 +1148,14 @@ def _embed(texts: list[str]) -> list[list[float]]:
         raise RuntimeError("EMBED_API_KEY 未配置，无法写入向量索引")
     import requests
 
+    # token 安全截断兜底：BAAI/bge-large-zh-v1.5 上下文 512 token，
+    # 超 ~616 字符即被 SiliconFlow 拒绝（HTTP 400 code 20015）。
+    # 截断保留 [文档]/[章节] 标题头部，确保任何超限 chunk 都不会导致整篇文档入库失败。
+    safe_texts = [
+        truncate_for_embedding(t, EMBED_MAX_CHARS)
+        for t in texts
+    ]
+
     url = f"{EMBED_API_BASE}/embeddings"
     headers = {
         "Authorization": f"Bearer {EMBED_API_KEY}",
@@ -1162,13 +1163,15 @@ def _embed(texts: list[str]) -> list[list[float]]:
     }
     all_emb: list[list[float]] = []
     batch_size = 100
-    for i in range(0, len(texts), batch_size):
-        batch = texts[i : i + batch_size]
+    for i in range(0, len(safe_texts), batch_size):
+        batch = safe_texts[i : i + batch_size]
         payload: dict[str, Any] = {"model": EMBED_MODEL, "input": batch}
         if EMBED_IS_JINA:
             payload["task"] = "retrieval.passage"
             payload["dimensions"] = EMBED_DIMS
-        resp = requests.post(url, headers=headers, json=payload, timeout=120)
+        from core.http_client import requests_session
+        with requests_session() as session:
+            resp = session.post(url, headers=headers, json=payload, timeout=120)
         if resp.status_code != 200:
             raise RuntimeError(f"Embedding 失败 ({resp.status_code}): {resp.text[:300]}")
         data = resp.json()

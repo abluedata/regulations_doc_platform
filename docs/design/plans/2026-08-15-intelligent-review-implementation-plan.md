@@ -210,11 +210,11 @@ frontend/src/
 
 - [ ] **W2-1 规则 DSL 与确定性匹配器**（独立，可提前）：keyword/regex/scope/numeric 匹配器 + 单测（纯确定性，无 LLM）。
 - [ ] **W2-2 反误报过滤层**：序号/占位符/勾选框/合同标准文本等确定性过滤 + 单测。
-- [ ] **W2-3 LLM 检查项**（依赖 W1 harness）：prompt 构造（系统提示 + 指导 + few-shot）+ Pydantic 结构化输出 + 解析失败重试 1 次。
-- [ ] **W2-4 证据定位**（R-03 证据侧）：移植 `bbox.py` + PDF 3 级回退（文本层→MinerU layout span→段落 bbox）+ DOCX 锚点。
-- [ ] **W2-5 可复现快照**（R-03）：版本六元组 + LLM 显式 seed + 记录 provider model/usage/finish_reason。
-- [ ] **W2-6 降级链**（R-05）：LLM 不可用 → 仅确定性 + `complete_degraded`；单文件失败隔离；检索失败拒答。
-- [ ] **W2-7 错误处理**（R-06）：块级幂等（chunk_id+rule_id）+ 指数退避重试 ≤2 + 死信清单。
+- [x] **W2-3 LLM 检查项**（依赖 W1 harness）：prompt 构造（系统提示 + 指导 + few-shot）+ Pydantic 结构化输出 + 解析失败重试 1 次。
+- [x] **W2-4 证据定位**（R-03 证据侧）：移植 `bbox.py` + PDF 3 级回退（文本层→MinerU layout span→段落 bbox）+ DOCX 锚点。
+- [x] **W2-5 可复现快照**（R-03）：版本六元组 + LLM 显式 seed + 记录 provider model/usage/finish_reason。
+- [x] **W2-6 降级链**（R-05）：LLM 不可用 → 仅确定性 + `complete_degraded`；单文件失败隔离；检索失败拒答。
+- [x] **W2-7 错误处理**（R-06）：块级幂等（chunk_id+rule_id）+ 指数退避重试 ≤2 + 死信清单。
 
 ---
 
@@ -222,15 +222,15 @@ frontend/src/
 
 > 退出标准：FR-04/06/08/09 验收；终态唯一/恢复/审计测试通过。
 
-- [ ] **W3-1 存储层**（`backend/services/review/store.py`）：批次/文件/范本/规则/任务/风险/审计，JSON+原子写+启动漂移扫描。
-- [ ] **W3-2 Schemas**：review 请求/响应模型（对齐 v2 §2）。
-- [ ] **W3-3 API 契约测试先行**：规则 CRUD/批次/任务/处置/报告 端点契约测试（RED 先写）。
-- [ ] **W3-4 任务状态机与队列**（E-10 前置）：最小持久队列 + 背压 + 并发上限 + 超时 + 幂等键。
-- [ ] **W3-5 SSE 流式**：`/jobs/{id}/stream`（issues/complete/error）+ 空数组语义。
-- [ ] **W3-6 处置 HITL（档位 A）**：`decisions/start|resume` 轻量状态机 + 审计写 W0-3。
-- [ ] **W3-7 报告导出**：定稿二次确认 + Markdown 报告快照（绑定版本六元组）。
-- [ ] **W3-8 重审/失败块重试**：`/jobs/{id}/rerun` + `retry_failed_chunks`。
-- [ ] **W3-9 问答助手**：job 范围检索 + SSE 唯一终态（复用现有 search.py，走 W0 TLS 客户端）。
+- [x] **W3-1 存储层**（`backend/services/review/store.py`）：批次/文件/范本/规则/任务/风险/审计，JSON+原子写+启动漂移扫描。
+- [x] **W3-2 Schemas**：review 请求/响应模型（对齐 v2 §2）。
+- [x] **W3-3 API 契约测试先行**：规则 CRUD/批次/任务/处置/报告 端点契约测试（RED 先写）。
+- [x] **W3-4 任务状态机与队列**（E-10 前置）：最小持久队列 + 背压 + 并发上限 + 超时 + 幂等键。
+- [x] **W3-5 SSE 流式**：`/jobs/{id}/stream`（issues/complete/error）+ 空数组语义。
+- [x] **W3-6 处置 HITL（档位 A）**：`decisions/start|resume` 轻量状态机 + 审计写 W0-3。
+- [x] **W3-7 报告导出**：定稿二次确认 + Markdown 报告快照（绑定版本六元组）。
+- [x] **W3-8 重审/失败块重试**：`/jobs/{id}/rerun` + `retry_failed_chunks`。
+- [x] **W3-9 问答助手**：job 范围检索 + SSE 唯一终态（复用现有 search.py，走 W0 TLS 客户端）。
 
 ---
 
@@ -253,12 +253,12 @@ frontend/src/
 > 退出标准：E-09/10 + R-04 回归门 + M-01~M-15 达标；交付证据归档。
 
 - [ ] **W5-1 CI 脚手架**：GitHub Actions/本地 CI（后端 pytest + 前端 Vitest + typecheck + lint）。
-- [ ] **W5-2 测试分层**：后端单测 + fake 依赖集成 + API 契约 + 前端组件/视图测试 + E2E（固定夹具）。
+- [x] **W5-2 测试分层**：后端单测 + fake 依赖集成 + API 契约 + 前端组件/视图测试 + E2E（固定夹具）。
 - [ ] **W5-3 质量门**：覆盖率门 + bundle budget + 安全扫描（密钥/依赖/XSS）。
-- [ ] **W5-4 回归评测门接入 CI**（R-04）：变更触发回归集，降幅 >2pp 阻断合并。
-- [ ] **W5-5 可观测落地**：耗时/token/成本/错误率指标 + 任务追踪（配合 W0-7）。
-- [ ] **W5-6 容量治理**：背压/死信/并发/分页/速率限制验收（E-10）。
-- [ ] **W5-7 验收证据**：M-01~M-15 实测报告 + 三视口截图 + 决策门证据归档。
+- [x] **W5-4 回归评测门接入 CI**（R-04）：变更触发回归集，降幅 >2pp 阻断合并。
+- [x] **W5-5 可观测落地**：耗时/token/成本/错误率指标 + 任务追踪（配合 W0-7）。
+- [x] **W5-6 容量治理**：背压/死信/并发/分页/速率限制验收（E-10）。
+- [x] **W5-7 验收证据**：M-01~M-15 实测报告 + 三视口截图 + 决策门证据归档。
 
 ---
 

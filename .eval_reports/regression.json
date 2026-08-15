@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "passed": true,
+  "threshold_pp": 2.0,
+  "comparisons": [
+    {
+      "series": "overall",
+      "metric": "precision",
+      "baseline": 0.9,
+      "current": 0.9,
+      "drop_pp": 0.0,
+      "threshold_pp": 2.0
+    },
+    {
+      "series": "overall",
+      "metric": "recall",
+      "baseline": 0.92,
+      "current": 0.92,
+      "drop_pp": 0.0,
+      "threshold_pp": 2.0
+    },
+    {
+      "series": "by_severity.high",
+      "metric": "precision",
+      "baseline": 0.84,
+      "current": 0.84,
+      "drop_pp": 0.0,
+      "threshold_pp": 2.0
+    },
+    {
+      "series": "by_severity.high",
+      "metric": "recall",
+      "baseline": 0.91,
+      "current": 0.91,
+      "drop_pp": 0.0,
+      "threshold_pp": 2.0
+    }
+  ],
+  "blocking_drops": []
+}

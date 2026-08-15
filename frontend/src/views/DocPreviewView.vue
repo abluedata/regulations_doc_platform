@@ -2,10 +2,10 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { marked } from 'marked'
 import { ArrowLeft, ChatDotRound, Delete, RefreshRight } from '@element-plus/icons-vue'
 import type { DocPreview } from '@/types'
 import { deleteDoc, getDocPreview, reparseDoc } from '@/api/docs'
+import SafeMarkdown from '@/components/SafeMarkdown.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -35,23 +35,6 @@ const metaLine = computed(() => {
   if (m.engine) parts.push(m.engine)
   return parts.join(' · ')
 })
-
-const htmlBody = computed(() => {
-  const md = preview.value?.markdown || ''
-  if (!md) return ''
-  try {
-    return marked.parse(md, { async: false }) as string
-  } catch {
-    return `<pre>${escapeHtml(md)}</pre>`
-  }
-})
-
-function escapeHtml(s: string) {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-}
 
 function statusTagType(status?: string) {
   if (status === 'ready') return 'success'
@@ -210,7 +193,7 @@ onUnmounted(() => {
       <section class="content-pane">
         <el-tabs v-model="activeTab">
           <el-tab-pane label="结构化正文" name="body">
-            <div class="md-body" v-html="htmlBody" />
+            <SafeMarkdown class="md-body" :content="preview.markdown" />
           </el-tab-pane>
           <el-tab-pane :label="`表格 (${preview.tables?.length || 0})`" name="tables">
             <div v-if="!preview.tables?.length" class="empty-hint">
@@ -231,7 +214,7 @@ onUnmounted(() => {
                   页 {{ t.page_start }}<template v-if="t.page_end && t.page_end !== t.page_start">–{{ t.page_end }}</template>
                 </span>
               </div>
-              <div class="table-html" v-html="t.html || ''" />
+              <SafeMarkdown class="table-html" :content="t.html || ''" source="html" />
             </div>
           </el-tab-pane>
           <el-tab-pane label="详情" name="info">

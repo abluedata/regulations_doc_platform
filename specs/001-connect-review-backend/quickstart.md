@@ -107,12 +107,10 @@ npm run dev
 
 ## 6. Verification Commands
 
-Backend tests, from `backend` (the application imports expect `backend` as the current directory):
+Backend tests, from repository root:
 
 ```powershell
-Set-Location backend
-..\venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"
-Set-Location ..
+.\venv\Scripts\python.exe -m unittest discover -s backend\tests -p "test_*.py"
 ```
 
 Frontend static/type/unit/build checks, from `frontend`:
@@ -138,19 +136,6 @@ git diff --check
 ```
 
 If a Python YAML/OpenAPI parser is already present in the environment, parse `contracts/review-api.openapi.yaml`; do not add a runtime dependency solely for document validation.
-
-### Recorded Isolated Worktree Baseline
-
-The `new-agent` isolated worktree baseline was verified on 2026-07-26 before adding review dependencies. Run the commands above from a clean checkout after `npm ci`.
-
-| Check | Command context | Baseline result |
-|-------|-----------------|-----------------|
-| Backend unit tests | `backend`: `..\venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"` | 54 tests passed |
-| Frontend unit tests | `frontend`: `npm test` | 11 files, 30 tests passed |
-| Frontend typecheck | `frontend`: `npm exec vue-tsc -- --noEmit` | passed |
-| Frontend build | `frontend`: `npm run build` | passed |
-
-`npm ci` reported 8 high-severity audit findings in the existing dependency tree. They are a baseline risk and must not be changed with `npm audit fix --force` as part of this work. The build also emits pre-existing Rollup `@vueuse/core` annotation and chunk-size warnings.
 
 ## 7. Required Test Fixtures
 
@@ -184,3 +169,4 @@ The fixtures must carry expected document version, quote hash, locator and findi
 - **Job is running after a crash**: on startup the runner waits for/recognizes expired lease, requeues and increments attempt; do not edit the DB.
 - **SSE disconnects**: GET the conversation for QA or GET the analysis job for analysis; do not infer failure from the connection alone.
 - **Multiple backend workers requested**: stop and migrate runner/database locking to a supported external architecture before enabling them.
+

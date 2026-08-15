@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowRight, Check, Setting, TrendCharts } from '@element-plus/icons-vue'
+import { ArrowRight, Setting } from '@element-plus/icons-vue'
 import ClauseCard from '@/components/review/ClauseCard.vue'
 import ReviewFooter from '@/components/review/ReviewFooter.vue'
 import ReviewStepper from '@/components/review/ReviewStepper.vue'
@@ -11,15 +11,23 @@ import type { ReviewClause } from '@/types'
 const review = useReviewStore()
 const router = useRouter()
 const route = useRoute()
-const model = ref('Legal-LLM v2（正式版）')
-const logic = ref('标准审查标记')
 
 const financeClauses = computed(() => review.clauses.filter((clause) => clause.group === 'finance'))
 const complianceClauses = computed(() => review.clauses.filter((clause) => clause.group === 'compliance'))
 const enabledCount = computed(() => review.clauses.filter((clause) => clause.enabled).length)
-const disabledCount = computed(() => review.clauses.filter((clause) => !clause.enabled && !clause.disabled).length)
 
-onMounted(() => review.goToStep(Number(route.meta.reviewStep) || 3))
+const showCreateRule = ref(false)
+const creatingRule = ref(false)
+const ruleError = ref('')
+const newRuleName = ref('')
+const newRuleCategory = ref('compliance')
+const newRuleSeverity = ref<'low' | 'medium' | 'high'>('medium')
+const newRuleDescription = ref('')
+
+onMounted(() => {
+  review.goToStep(Number(route.meta.reviewStep) || 3)
+  void review.initialize()
+})
 
 function isGroupEnabled(clauses: ReviewClause[]) {
   return clauses.filter((clause) => !clause.disabled).every((clause) => clause.enabled)
@@ -37,9 +45,45 @@ function updateSensitivity(event: Event) {
   review.setSensitivity(Number((event.target as HTMLInputElement).value))
 }
 
+async function createRule() {
+  creatingRule.value = true
+  ruleError.value = ''
+  try {
+    await review.createRule({
+      name: newRuleName.value.trim() || '自定义规则',
+      category: newRuleCategory.value,
+      severity: newRuleSeverity.value,
+      definition: { description: newRuleDescription.value.trim() || '自定义审查规则。' },
+    })
+    showCreateRule.value = false
+    newRuleName.value = ''
+    newRuleDescription.value = ''
+  } catch (err) {
+    ruleError.value = err instanceof Error ? err.message : '创建规则失败'
+  } finally {
+    creatingRule.value = false
+  }
+}
+
+async function saveConfiguration() {
+  try {
+    await review.createTemplate({
+      name: '自定义配置范本',
+      category: '交易类',
+      description: '由当前规则配置生成的审查范本。',
+    })
+  } catch {
+    // 错误已在 store 中记录
+  }
+}
+
 async function startAnalysis() {
-  review.startAnalysis()
-  await router.push({ name: 'review-console' })
+  try {
+    await review.startAnalysis()
+    await router.push({ name: 'review-console' })
+  } catch {
+    // 错误已在 store 中记录并展示，阻止跳转
+  }
 }
 
 async function goPrevious() {
@@ -59,6 +103,25 @@ async function goPrevious() {
 
     <div class="rules-layout">
       <main class="rules-main">
+        <section class="detection-panel" aria-labelledby="detection-title">
+          <div class="detection-copy">
+            <h2 id="detection-title">检测设置</h2>
+            <p>调整检测灵敏度，控制审查标记的严格程度。</p>
+          </div>
+          <label class="sensitivity-control">
+            <span class="field-label"><b>检测灵敏度</b><strong>{{ review.sensitivity }}%</strong></span>
+            <input
+              data-test="sensitivity"
+              type="range"
+              min="0"
+              max="100"
+              :value="review.sensitivity"
+              @input="updateSensitivity"
+            />
+            <span class="range-labels"><small>宽泛</small><small>精准</small></span>
+          </label>
+        </section>
+
         <section class="rule-group" aria-labelledby="finance-title">
           <div class="group-heading">
             <h2 id="finance-title">财务与支付</h2>
@@ -80,7 +143,7 @@ async function goPrevious() {
           </div>
           <div class="clause-grid clause-grid--compliance">
             <ClauseCard v-for="clause in complianceClauses" :key="clause.id" :clause="clause" @toggle="review.toggleClause" />
-            <button class="custom-rule" type="button">
+            <button class="custom-rule" type="button" @click="showCreateRule = true">
               <el-icon aria-hidden="true"><Setting /></el-icon>
               <strong>添加自定义规则</strong>
               <span>扩展您的审查范围</span>
@@ -88,68 +151,60 @@ async function goPrevious() {
           </div>
         </section>
 
-        <section class="tuning-panel" aria-labelledby="tuning-title">
-          <div class="tuning-heading">
-            <span class="tuning-icon" aria-hidden="true"><el-icon><TrendCharts /></el-icon></span>
-            <div>
-              <h2 id="tuning-title">模型微调</h2>
-              <p>调整检测灵敏度与标记方式。</p>
-            </div>
-          </div>
-          <div class="tuning-grid">
-            <label class="sensitivity-control">
-              <span class="field-label"><b>检测灵敏度</b><strong>{{ review.sensitivity }}%</strong></span>
-              <input
-                data-test="sensitivity"
-                type="range"
-                min="0"
-                max="100"
-                :value="review.sensitivity"
-                @input="updateSensitivity"
-              />
-              <span class="range-labels"><small>宽泛</small><small>精准</small></span>
-            </label>
-            <label class="select-control">
-              <span class="field-label"><b>分析模型</b></span>
-              <select v-model="model">
-                <option>Legal-LLM v2（正式版）</option>
-                <option>Legal-LLM v2（快速版）</option>
-              </select>
-            </label>
-            <label class="select-control">
-              <span class="field-label"><b>标记逻辑</b></span>
-              <select v-model="logic">
-                <option>标准审查标记</option>
-                <option>仅标记高风险</option>
-              </select>
-            </label>
-          </div>
-        </section>
       </main>
 
       <aside class="config-preview">
         <h2>配置预览</h2>
         <dl>
-          <div><dt>已选条款</dt><dd>{{ enabledCount }}</dd></div>
-          <div><dt>潜在违规</dt><dd class="warning-value">{{ disabledCount + 3 }} 项激活</dd></div>
-          <div><dt>预计处理时长</dt><dd>~1.2 分钟</dd></div>
+          <div><dt>已启用条款</dt><dd>{{ enabledCount }} 项</dd></div>
+          <div><dt>检测灵敏度</dt><dd>{{ review.sensitivity }}%</dd></div>
+          <div><dt>就绪文件</dt><dd>{{ review.readyCount }} 份</dd></div>
           <div><dt>批次大小</dt><dd>{{ review.files.length }} 份文件</dd></div>
         </dl>
-        <div class="ready-note">
-          <div><span class="ready-dot"></span><strong>模型就绪状态：最佳</strong></div>
-          <p>继续操作将启动高精度扫描。结果将根据 <b>{{ model.split('（')[0] }}</b> 进行对比。</p>
-        </div>
         <el-button data-test="start-analysis" type="primary" size="large" @click="startAnalysis">
           开始全量分析
           <el-icon aria-hidden="true"><ArrowRight /></el-icon>
         </el-button>
-        <el-button plain size="large">保存配置为模板</el-button>
+        <el-button plain size="large" @click="saveConfiguration">保存配置为模板</el-button>
       </aside>
     </div>
 
     <ReviewFooter previous-label="上一步：选择范本" next-label="开始分析" @previous="goPrevious" @next="startAnalysis">
       {{ enabledCount }} 项规则已启用
     </ReviewFooter>
+
+    <el-dialog v-model="showCreateRule" title="添加自定义规则" width="min(520px, 92vw)">
+      <form class="create-form" @submit.prevent="createRule">
+        <label>
+          <span>规则名称</span>
+          <input v-model="newRuleName" type="text" placeholder="例如：检查履约保函条款" />
+        </label>
+        <label>
+          <span>分类</span>
+          <select v-model="newRuleCategory">
+            <option value="compliance">合规与运营</option>
+            <option value="finance">财务与支付</option>
+          </select>
+        </label>
+        <label>
+          <span>风险等级</span>
+          <select v-model="newRuleSeverity">
+            <option value="low">低</option>
+            <option value="medium">中</option>
+            <option value="high">高</option>
+          </select>
+        </label>
+        <label>
+          <span>规则描述</span>
+          <textarea v-model="newRuleDescription" rows="3" placeholder="描述该规则要识别的问题"></textarea>
+        </label>
+        <p v-if="ruleError" class="create-error">{{ ruleError }}</p>
+        <div class="create-form__actions">
+          <el-button @click="showCreateRule = false">取消</el-button>
+          <el-button type="primary" native-type="submit" :loading="creatingRule">创建规则</el-button>
+        </div>
+      </form>
+    </el-dialog>
   </div>
 </template>
 
@@ -258,55 +313,37 @@ async function goPrevious() {
   font-size: 12px;
 }
 
-.tuning-panel {
-  padding: 20px;
-  border: 1px solid #a8c5ff;
-  border-radius: var(--radius-md);
-  background: var(--action-soft);
-}
-
-.tuning-heading {
+.detection-panel {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 24px;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 16px 20px;
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
 }
 
-.tuning-icon {
-  display: grid;
-  width: 42px;
-  height: 42px;
-  place-items: center;
-  border-radius: var(--radius-sm);
-  color: #ffffff;
-  background: var(--action);
-  font-size: 22px;
-}
-
-.tuning-heading h2,
-.tuning-heading p {
+.detection-copy h2,
+.detection-copy p {
   margin: 0;
 }
 
-.tuning-heading h2 {
-  font-size: 18px;
+.detection-copy h2 {
+  font-size: 16px;
 }
 
-.tuning-heading p {
+.detection-copy p {
   margin-top: 3px;
   color: var(--ink-muted);
   font-size: 12px;
 }
 
-.tuning-grid {
-  display: grid;
-  grid-template-columns: minmax(180px, 1.1fr) repeat(2, minmax(170px, 1fr));
-  align-items: end;
-  gap: 22px;
+.detection-panel .sensitivity-control {
+  flex: 0 1 340px;
 }
 
-.sensitivity-control,
-.select-control {
+.sensitivity-control {
   display: grid;
   gap: 9px;
 }
@@ -333,16 +370,6 @@ async function goPrevious() {
   justify-content: space-between;
   color: #7a89a0;
   font-size: 11px;
-}
-
-.select-control select {
-  width: 100%;
-  min-height: var(--control-height);
-  padding: 8px 10px;
-  border: 1px solid var(--outline);
-  border-radius: var(--radius-sm);
-  color: var(--ink);
-  background: var(--surface);
 }
 
 .config-preview {
@@ -385,40 +412,8 @@ async function goPrevious() {
   font-weight: 700;
 }
 
-.config-preview dd:not(.warning-value) {
+.config-preview dd {
   color: var(--action);
-}
-
-.config-preview .warning-value {
-  color: var(--danger);
-}
-
-.ready-note {
-  padding: 16px;
-  border: 1px solid var(--outline-soft);
-  border-radius: var(--radius-md);
-  background: var(--surface-low);
-}
-
-.ready-note > div {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-}
-
-.ready-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #16b364;
-}
-
-.ready-note p {
-  margin: 12px 0 0;
-  color: var(--ink-muted);
-  font-size: 12px;
-  line-height: 1.7;
 }
 
 .config-preview .el-button {
@@ -440,8 +435,7 @@ async function goPrevious() {
   }
 
   .config-preview h2,
-  .config-preview dl,
-  .config-preview .ready-note {
+  .config-preview dl {
     grid-column: 1 / -1;
   }
 
@@ -457,19 +451,60 @@ async function goPrevious() {
 
   .clause-grid,
   .clause-grid--compliance,
-  .tuning-grid,
   .config-preview {
     grid-template-columns: 1fr;
   }
 
+  .detection-panel {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .config-preview h2,
-  .config-preview dl,
-  .config-preview .ready-note {
+  .config-preview dl {
     grid-column: auto;
   }
 
   .config-preview .el-button {
     width: 100%;
   }
+}
+
+.create-form {
+  display: grid;
+  gap: 16px;
+}
+
+.create-form label:not(.create-form__check) {
+  display: grid;
+  gap: 7px;
+}
+
+.create-form label > span {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.create-form input[type="text"],
+.create-form textarea,
+.create-form select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.create-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.create-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 </style>

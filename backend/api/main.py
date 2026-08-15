@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import sys
 import io
+import logging
 from pathlib import Path
 
 # 保证项目根目录在 sys.path（uvicorn 从任意 cwd 启动时）
@@ -37,8 +38,12 @@ if sys.platform == "win32":
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import chat, docs, favorites, history
+from api.routes import chat, docs, favorites, history, review
 from api.schemas import HealthResponse
+from api.middleware.auth import LocalOnlyAuthMiddleware, validate_bind_host
+from api.middleware.errors import ErrorProtocolMiddleware, install_error_handlers
+from api.middleware.logging import RequestLoggingMiddleware
+from core.log_redactor import SecretRedactionFilter, validate_startup_secrets
 
 app = FastAPI(
     title="审核智规 API",
@@ -46,6 +51,8 @@ app = FastAPI(
     version="1.0.0",
 )
 
+install_error_handlers(app)
+app.add_middleware(ErrorProtocolMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -58,11 +65,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(LocalOnlyAuthMiddleware)
+app.add_middleware(RequestLoggingMiddleware)
+
+for handler in logging.getLogger().handlers:
+    handler.addFilter(SecretRedactionFilter())
 
 app.include_router(chat.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
 app.include_router(favorites.router, prefix="/api")
 app.include_router(docs.router, prefix="/api")
+app.include_router(review.router, prefix="/api")
 
 
 def reconcile_document_publications() -> None:
@@ -72,7 +85,14 @@ def reconcile_document_publications() -> None:
     document_store.reconcile_pending_deletions()
 
 
+def validate_security_boundary() -> None:
+    validate_bind_host()
+    validate_startup_secrets()
+
+
+app.router.add_event_handler("startup", validate_security_boundary)
 app.router.add_event_handler("startup", reconcile_document_publications)
+app.router.add_event_handler("startup", review.startup_drift_scan)
 
 
 @app.get("/api/health", response_model=HealthResponse)
@@ -84,15 +104,9 @@ def health():
 def health_index():
     """检查 ES 索引是否可用。"""
     try:
-        from elasticsearch import Elasticsearch
         from core.config import ES_HOST, ES_USER, ES_PASS, INDEX_NAME
-
-        es = Elasticsearch(
-            ES_HOST,
-            basic_auth=(ES_USER, ES_PASS),
-            verify_certs=False,
-            ssl_show_warn=False,
-        )
+        from core.http_client import elasticsearch_client
+        es = elasticsearch_client(ES_HOST, username=ES_USER, password=ES_PASS)
         exists = es.indices.exists(index=INDEX_NAME)
         count = es.count(index=INDEX_NAME)["count"] if exists else 0
         return {
@@ -101,5 +115,27 @@ def health_index():
             "exists": bool(exists),
             "count": count,
         }
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+    except Exception:
+        return {"status": "error", "message": "index dependency unavailable"}
+
+
+@app.get("/api/health/dependencies")
+def health_dependencies():
+    """Read-only dependency status; never returns provider errors or credentials."""
+    result = {"status": "ok", "dependencies": {}}
+    try:
+        from core.config import ES_HOST, ES_USER, ES_PASS
+        from core.http_client import elasticsearch_client
+        result["dependencies"]["elasticsearch"] = "ok" if elasticsearch_client(ES_HOST, username=ES_USER, password=ES_PASS).ping() else "unavailable"
+    except Exception:
+        result["dependencies"]["elasticsearch"] = "unavailable"
+    result["status"] = "ok" if all(v == "ok" for v in result["dependencies"].values()) else "degraded"
+    return result
+
+
+@app.get("/api/health/metrics")
+def health_metrics():
+    """Return aggregate process metrics without request or document payloads."""
+    from core.metrics import metrics
+
+    return metrics.snapshot()

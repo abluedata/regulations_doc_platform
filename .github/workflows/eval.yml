@@ -1,0 +1,44 @@
+name: Review regression gate
+
+on:
+  pull_request:
+    paths:
+      - 'backend/eval/**'
+      - 'backend/services/review/**'
+      - 'scripts/eval_review.py'
+      - '.github/workflows/eval.yml'
+  push:
+    paths:
+      - 'backend/eval/**'
+      - 'backend/services/review/**'
+      - 'scripts/eval_review.py'
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify locked evaluation data and 2pp gate
+        env:
+          PYTHONPATH: backend
+        run: python -m unittest backend.tests.test_eval_gold_manifest backend.tests.test_eval_metrics
+      - name: Exercise regression CLI
+        run: |
+          mkdir -p .eval_reports
+          python -m backend.eval.regression \
+            --baseline backend/eval/ci/baseline.json \
+            --current backend/eval/ci/current.json \
+            --max-drop-pp 2 \
+            --output .eval_reports/regression.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: review-regression-report
+          path: .eval_reports/

@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "regression_set_id": "termination_agreement_regression_v1",
+  "gold_dataset_id": "termination_agreement_gold_v1",
+  "gold_dataset_sha256": "dbef3f2a57f8cb5a4c29a92d0ade7c3fccbb74b306ec49f18106cd050dcd64a4",
+  "min_documents": 10,
+  "documents": [
+    {
+      "path": "termination_agreement_001.json",
+      "doc_id": "termination-agreement-001",
+      "sha256": "ac9c2b4dd3b5335109e2eb19e6b9458df2f03171df108ad96b75b0e637b1c56d"
+    },
+    {
+      "path": "termination_agreement_002.json",
+      "doc_id": "termination-agreement-002",
+      "sha256": "a3765995578d718cc2cb1144d1d64a9c517f97822e3ed175c7980d6a8760a0b1"
+    },
+    {
+      "path": "termination_agreement_003.json",
+      "doc_id": "termination-agreement-003",
+      "sha256": "045acf0cc9f12ba3446c1e1dea30ea369a3402f7448674c0a62887c95758c518"
+    },
+    {
+      "path": "termination_agreement_004.json",
+      "doc_id": "termination-agreement-004",
+      "sha256": "122441de6628e8209165df0f649aa911fc231f21464bf85364ad783710bf21a0"
+    },
+    {
+      "path": "termination_agreement_005.json",
+      "doc_id": "termination-agreement-005",
+      "sha256": "72ba40ca19723671df100c5e10f751565145a543a0b37256158ca9051ada0cde"
+    },
+    {
+      "path": "termination_agreement_006.json",
+      "doc_id": "termination-agreement-006",
+      "sha256": "623c0b0b055ae3502249a381091f2e8ced22025a77059fba03550a27fafb12f2"
+    },
+    {
+      "path": "termination_agreement_007.json",
+      "doc_id": "termination-agreement-007",
+      "sha256": "5c3b9df02bb4e1a54297fd35e742d29f257436759327e7b891dc909dfc8d8ee0"
+    },
+    {
+      "path": "termination_agreement_008.json",
+      "doc_id": "termination-agreement-008",
+      "sha256": "3d168037191a0cf58e2242b711e706cbcf4aa45746c3aa44afc2b8d5b92981b7"
+    },
+    {
+      "path": "termination_agreement_009.json",
+      "doc_id": "termination-agreement-009",
+      "sha256": "4ab2afea85c93382c5e4c7233a5b049725b1999b0829f6eccd34569b1309fa75"
+    },
+    {
+      "path": "termination_agreement_010.json",
+      "doc_id": "termination-agreement-010",
+      "sha256": "39fa3d9b3935b34e1632ec28034f29ed5e24ef68a874465f971f36e0ed1be4ba"
+    }
+  ],
+  "gate": {
+    "max_drop_pp": 2.0,
+    "metrics": [
+      "overall.precision",
+      "overall.recall",
+      "by_severity.high.precision",
+      "by_severity.high.recall"
+    ]
+  }
+}
+

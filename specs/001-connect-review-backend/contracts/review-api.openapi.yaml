@@ -1,0 +1,1305 @@
+openapi: 3.1.0
+info:
+  title: Regulations Document Platform Review API
+  version: 1.0.0-mvp
+  description: >-
+    智能审查领域契约。/api/docs 路径是现有文档 API 的兼容扩展；
+    /api/review 路径承载审查领域资源。通用 /api/chat 契约保持不变，未在此重复声明。
+servers:
+  - url: http://127.0.0.1:8002
+tags:
+  - name: Document Versions
+  - name: Review Batches
+  - name: Review Sources
+  - name: Review Rules
+  - name: Analysis
+  - name: Review QA
+  - name: Exports
+paths:
+  /api/docs/{document_id}/versions/{version_id}:
+    get:
+      tags: [Document Versions]
+      operationId: getDocumentVersion
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: Immutable version manifest
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentVersion'
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/docs/{document_id}/versions/{version_id}/file:
+    get:
+      tags: [Document Versions]
+      operationId: downloadDocumentVersionFile
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: Original PDF or DOCX bytes for the exact version
+          headers:
+            ETag:
+              schema: {type: string}
+          content:
+            application/pdf: {schema: {type: string, format: binary}}
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+              schema: {type: string, format: binary}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/docs/{document_id}/versions/{version_id}/preview:
+    get:
+      tags: [Document Versions]
+      operationId: getDocumentVersionPreview
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: Locator-preserving structured IR used by the shared viewer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentPreview'
+        '409': {$ref: '#/components/responses/Conflict'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /api/review/batches:
+    post:
+      tags: [Review Batches]
+      operationId: createReviewBatch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateBatchRequest'}
+      responses:
+        '201':
+          description: Batch created
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/ReviewBatch'}}
+        '422': {$ref: '#/components/responses/ValidationError'}
+    get:
+      tags: [Review Batches]
+      operationId: listReviewBatches
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Batch page
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/BatchPage'}}
+  /api/review/batches/{batch_id}:
+    get:
+      tags: [Review Batches]
+      operationId: getReviewBatch
+      parameters:
+        - $ref: '#/components/parameters/BatchId'
+      responses:
+        '200':
+          description: Batch and current document membership
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/ReviewBatch'}}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      tags: [Review Batches]
+      operationId: updateReviewBatch
+      parameters:
+        - $ref: '#/components/parameters/BatchId'
+        - $ref: '#/components/parameters/IfMatchRevision'
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: '#/components/schemas/UpdateBatchRequest'}}
+      responses:
+        '200':
+          description: Updated batch
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/ReviewBatch'}}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/review/batches/{batch_id}/documents:
+    post:
+      tags: [Review Batches]
+      operationId: addBatchDocument
+      parameters:
+        - $ref: '#/components/parameters/BatchId'
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: '#/components/schemas/AddBatchDocumentRequest'}}
+      responses:
+        '201':
+          description: Membership created; version is explicit and immutable
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/BatchDocument'}}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /api/review/batches/{batch_id}/documents/{membership_id}:
+    delete:
+      tags: [Review Batches]
+      operationId: removeBatchDocument
+      parameters:
+        - $ref: '#/components/parameters/BatchId'
+        - name: membership_id
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Uuid'}
+      responses:
+        '204': {description: Removed before analysis snapshot exists}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/review/batches/{batch_id}/template-suggestions:
+    get:
+      tags: [Review Batches]
+      operationId: listTemplateSuggestions
+      parameters:
+        - $ref: '#/components/parameters/BatchId'
+      responses:
+        '200':
+          description: Suggestions only; client must explicitly select a version
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/TemplateSuggestionPage'}}
+
+  /api/review/sources:
+    post:
+      tags: [Review Sources]
+      operationId: registerReviewSource
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: '#/components/schemas/RegisterSourceRequest'}}
+      responses:
+        '201':
+          description: Source version references an existing ready document version
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/SourceVersion'}}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+    get:
+      tags: [Review Sources]
+      operationId: listReviewSources
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: source_type
+          in: query
+          schema: {$ref: '#/components/schemas/SourceType'}
+      responses:
+        '200':
+          description: Source page
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/SourcePage'}}
+  /api/review/sources/{source_version_id}/extraction-jobs:
+    post:
+      tags: [Review Sources]
+      operationId: startRuleExtraction
+      parameters:
+        - $ref: '#/components/parameters/SourceVersionId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: Persistent extraction job accepted or idempotently replayed
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/TaskJob'}}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+  /api/review/extraction-jobs/{job_id}:
+    get:
+      tags: [Review Sources]
+      operationId: getRuleExtractionJob
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Authoritative extraction status
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/TaskJob'}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/review/extraction-jobs/{job_id}/candidates:
+    get:
+      tags: [Review Sources]
+      operationId: listRuleCandidates
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Candidate page
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/RuleCandidatePage'}}
+  /api/review/rule-candidates/{candidate_id}/decision:
+    put:
+      tags: [Review Rules]
+      operationId: decideRuleCandidate
+      parameters:
+        - name: candidate_id
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Uuid'}
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: '#/components/schemas/CandidateDecisionRequest'}}
+      responses:
+        '200':
+          description: Candidate confirmed or rejected; not yet executable
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/RuleCandidate'}}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /api/review/rule-candidates/{candidate_id}/publish:
+    post:
+      tags: [Review Rules]
+      operationId: publishRuleCandidate
+      parameters:
+        - name: candidate_id
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Uuid'}
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: false
+        content:
+          application/json: {schema: {$ref: '#/components/schemas/PublishRuleRequest'}}
+      responses:
+        '201':
+          description: Immutable published rule version
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/RuleVersion'}}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
+  /api/review/templates:
+    post:
+      tags: [Review Rules]
+      operationId: createTemplateVersion
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: '#/components/schemas/CreateTemplateVersionRequest'}}
+      responses:
+        '201':
+          description: Draft template version referencing an existing template source version
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/TemplateVersion'}}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+    get:
+      tags: [Review Rules]
+      operationId: listTemplates
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: category
+          in: query
+          schema: {type: string}
+        - name: q
+          in: query
+          schema: {type: string, maxLength: 200}
+        - name: status
+          in: query
+          schema: {$ref: '#/components/schemas/PublishStatus'}
+      responses:
+        '200':
+          description: Template family/version summaries
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/TemplatePage'}}
+  /api/review/template-versions/{template_version_id}:
+    get:
+      tags: [Review Rules]
+      operationId: getTemplateVersion
+      parameters:
+        - name: template_version_id
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Uuid'}
+      responses:
+        '200':
+          description: Immutable template version
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/TemplateVersion'}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/review/template-versions/{template_version_id}/publish:
+    post:
+      tags: [Review Rules]
+      operationId: publishTemplateVersion
+      parameters:
+        - name: template_version_id
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Uuid'}
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Published immutable template version; only published rule versions may be included
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/TemplateVersion'}}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /api/review/rules:
+    get:
+      tags: [Review Rules]
+      operationId: listRules
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: category
+          in: query
+          schema: {type: string}
+        - name: q
+          in: query
+          schema: {type: string, maxLength: 200}
+      responses:
+        '200':
+          description: Published/disabled rule versions
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/RuleVersionPage'}}
+  /api/review/rule-versions/{rule_version_id}:
+    get:
+      tags: [Review Rules]
+      operationId: getRuleVersion
+      parameters:
+        - name: rule_version_id
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Uuid'}
+      responses:
+        '200':
+          description: Immutable rule version
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/RuleVersion'}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/review/configurations:
+    post:
+      tags: [Review Rules]
+      operationId: createReviewConfiguration
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: '#/components/schemas/ConfigurationWrite'}}
+      responses:
+        '201':
+          description: Configuration with pinned rule versions
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/ReviewConfiguration'}}
+        '422': {$ref: '#/components/responses/ValidationError'}
+    get:
+      tags: [Review Rules]
+      operationId: listReviewConfigurations
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Configurations include invalid pinned rule IDs
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/ConfigurationPage'}}
+  /api/review/configurations/{configuration_id}:
+    put:
+      tags: [Review Rules]
+      operationId: updateReviewConfiguration
+      parameters:
+        - name: configuration_id
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Uuid'}
+        - $ref: '#/components/parameters/IfMatchRevision'
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: '#/components/schemas/ConfigurationWrite'}}
+      responses:
+        '200':
+          description: Updated configuration
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/ReviewConfiguration'}}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  /api/review/analysis-jobs:
+    post:
+      tags: [Analysis]
+      operationId: startAnalysisJob
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: '#/components/schemas/StartAnalysisRequest'}}
+      responses:
+        '202':
+          description: Job accepted; same key and request replays this resource
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/AnalysisJob'}}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+    get:
+      tags: [Analysis]
+      operationId: listAnalysisJobs
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: batch_id
+          in: query
+          schema: {$ref: '#/components/schemas/Uuid'}
+      responses:
+        '200':
+          description: Analysis job page
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/AnalysisJobPage'}}
+  /api/review/analysis-jobs/{job_id}:
+    get:
+      tags: [Analysis]
+      operationId: getAnalysisJob
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Authoritative status; clients ignore responses with older revision
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/AnalysisJob'}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/review/analysis-jobs/{job_id}/findings:
+    get:
+      tags: [Analysis]
+      operationId: listFindings
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: document_version_id
+          in: query
+          schema: {type: string}
+        - name: severity
+          in: query
+          schema: {$ref: '#/components/schemas/Severity'}
+        - name: include_suppressed
+          in: query
+          schema: {type: boolean, default: false}
+      responses:
+        '200':
+          description: Findings and current human decision overlay
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/FindingPage'}}
+  /api/review/analysis-jobs/{job_id}/retries:
+    post:
+      tags: [Analysis]
+      operationId: retryFailedDocuments
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: false
+        content:
+          application/json: {schema: {$ref: '#/components/schemas/RetryAnalysisRequest'}}
+      responses:
+        '202':
+          description: Child job containing failed document jobs only
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/AnalysisJob'}}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/review/findings/{finding_id}/decision:
+    put:
+      tags: [Analysis]
+      operationId: putFindingDecision
+      parameters:
+        - name: finding_id
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Uuid'}
+        - $ref: '#/components/parameters/IfMatchRevision'
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: '#/components/schemas/FindingDecisionWrite'}}
+      responses:
+        '200':
+          description: Human decision; original finding remains immutable
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/HumanDecision'}}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/review/analysis-jobs/{job_id}/decision:
+    put:
+      tags: [Analysis]
+      operationId: putOverallDecision
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/IfMatchRevision'
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: '#/components/schemas/OverallDecisionWrite'}}
+      responses:
+        '200':
+          description: Overall human decision
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/HumanDecision'}}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/review/analysis-jobs/{job_id}/audit-events:
+    get:
+      tags: [Analysis]
+      operationId: listAuditEvents
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Append-only event page
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/AuditEventPage'}}
+
+  /api/review/conversations:
+    post:
+      tags: [Review QA]
+      operationId: createReviewConversation
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: '#/components/schemas/CreateConversationRequest'}}
+      responses:
+        '201':
+          description: Conversation scoped to one analysis job
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/ReviewConversation'}}
+  /api/review/conversations/{conversation_id}:
+    get:
+      tags: [Review QA]
+      operationId: getReviewConversation
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+      responses:
+        '200':
+          description: Complete/incomplete messages; errors are not messages
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/ReviewConversation'}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/review/conversations/{conversation_id}/messages:
+    delete:
+      tags: [Review QA]
+      operationId: clearReviewConversation
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+      responses:
+        '204': {description: Conversation messages cleared; analysis remains unchanged}
+  /api/review/conversations/{conversation_id}/stream:
+    post:
+      tags: [Review QA]
+      operationId: streamReviewAnswer
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: '#/components/schemas/ReviewStreamRequest'}}
+      responses:
+        '200':
+          description: SSE using meta/status/token/done/error; see review-events.md
+          content:
+            text/event-stream:
+              schema: {type: string}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /api/review/conversations/{conversation_id}/stop:
+    post:
+      tags: [Review QA]
+      operationId: stopReviewAnswer
+      parameters:
+        - $ref: '#/components/parameters/ConversationId'
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: '#/components/schemas/StopRequest'}}
+      responses:
+        '202':
+          description: Stop signal accepted for this request only
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/StopResponse'}}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /api/review/analysis-jobs/{job_id}/exports:
+    post:
+      tags: [Exports]
+      operationId: createReviewExport
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: false
+        content:
+          application/json: {schema: {$ref: '#/components/schemas/CreateExportRequest'}}
+      responses:
+        '202':
+          description: DOCX artifact job with frozen result and decision revisions
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/ExportArtifact'}}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/review/export-artifacts/{artifact_id}:
+    get:
+      tags: [Exports]
+      operationId: getExportArtifact
+      parameters:
+        - name: artifact_id
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Uuid'}
+      responses:
+        '200':
+          description: Authoritative export status
+          content:
+            application/json: {schema: {$ref: '#/components/schemas/ExportArtifact'}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/review/export-artifacts/{artifact_id}/download:
+    get:
+      tags: [Exports]
+      operationId: downloadExportArtifact
+      parameters:
+        - name: artifact_id
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Uuid'}
+      responses:
+        '200':
+          description: Completed DOCX report
+          content:
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+              schema: {type: string, format: binary}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+components:
+  parameters:
+    DocumentId:
+      name: document_id
+      in: path
+      required: true
+      schema: {type: string}
+    VersionId:
+      name: version_id
+      in: path
+      required: true
+      schema: {type: string}
+    BatchId:
+      name: batch_id
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    SourceVersionId:
+      name: source_version_id
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    JobId:
+      name: job_id
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    ConversationId:
+      name: conversation_id
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    Page:
+      name: page
+      in: query
+      schema: {type: integer, minimum: 1, default: 1}
+    PageSize:
+      name: page_size
+      in: query
+      schema: {type: integer, minimum: 1, maximum: 200, default: 20}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {type: string, minLength: 1, maxLength: 200}
+      description: Same key and canonical payload replays; same key with a different payload returns 409.
+    IfMatchRevision:
+      name: If-Match-Revision
+      in: header
+      required: true
+      schema: {type: integer, minimum: 0}
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}
+    Conflict:
+      description: State, version, revision, or idempotency conflict
+      content:
+        application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}
+    ValidationError:
+      description: Request or business validation failed
+      content:
+        application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}
+    TooManyRequests:
+      description: MVP concurrency or batch limit reached
+      headers:
+        Retry-After: {schema: {type: integer, minimum: 1}}
+      content:
+        application/json: {schema: {$ref: '#/components/schemas/ErrorEnvelope'}}
+  schemas:
+    Uuid:
+      type: string
+      format: uuid
+    Timestamp:
+      type: string
+      format: date-time
+    ErrorEnvelope:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: object
+          required: [code, message]
+          properties:
+            code: {type: string}
+            message: {type: string}
+            fields: {type: object, additionalProperties: true, default: {}}
+            retryable: {type: boolean, default: false}
+            trace_id: {type: [string, 'null']}
+    DocumentVersion:
+      type: object
+      required: [document_id, version_id, format, status, location_capability, file_sha256, ir_sha256, created_at]
+      properties:
+        document_id: {type: string}
+        version_id: {type: string}
+        format: {enum: [pdf, docx]}
+        status: {enum: [processing, ready, failed, manual_required]}
+        location_capability: {enum: [exact, block, page, none]}
+        file_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+        ir_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+        parser_schema_version: {type: string}
+        page_count: {type: [integer, 'null'], minimum: 1}
+        block_count: {type: integer, minimum: 0}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+    DocumentPreview:
+      type: object
+      required: [document_id, version_id, format, blocks]
+      properties:
+        document_id: {type: string}
+        version_id: {type: string}
+        format: {enum: [pdf, docx]}
+        blocks:
+          type: array
+          items:
+            type: object
+            required: [block_id, text, document_order]
+            properties:
+              block_id: {type: string}
+              text: {type: string}
+              document_order: {type: integer, minimum: 0}
+              locator: {type: [object, 'null'], additionalProperties: true}
+    CreateBatchRequest:
+      type: object
+      required: [name, declared_document_type]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 200}
+        declared_document_type: {type: string, minLength: 1, maxLength: 100}
+        enhanced_ocr: {type: boolean, default: false}
+    UpdateBatchRequest:
+      type: object
+      properties:
+        name: {type: string, minLength: 1, maxLength: 200}
+        declared_document_type: {type: string, minLength: 1, maxLength: 100}
+        enhanced_ocr: {type: boolean}
+      minProperties: 1
+    ReviewBatch:
+      type: object
+      required: [id, name, declared_document_type, enhanced_ocr, status, documents, revision, created_at, updated_at]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        name: {type: string}
+        declared_document_type: {type: string}
+        enhanced_ocr: {type: boolean}
+        status: {enum: [draft, ready, analyzing, completed, partial, failed]}
+        documents: {type: array, items: {$ref: '#/components/schemas/BatchDocument'}}
+        revision: {type: integer, minimum: 0}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        updated_at: {$ref: '#/components/schemas/Timestamp'}
+    BatchDocument:
+      type: object
+      required: [id, batch_id, document_id, document_version_id, display_order, readiness, added_at]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        batch_id: {$ref: '#/components/schemas/Uuid'}
+        document_id: {type: string}
+        document_version_id: {type: string}
+        display_order: {type: integer, minimum: 0}
+        readiness: {enum: [pending, ready, blocked, removed]}
+        readiness_reason: {type: [string, 'null']}
+        added_at: {$ref: '#/components/schemas/Timestamp'}
+    AddBatchDocumentRequest:
+      type: object
+      required: [document_id, document_version_id]
+      properties:
+        document_id: {type: string}
+        document_version_id: {type: string}
+        display_order: {type: integer, minimum: 0}
+    BatchPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties: {items: {type: array, items: {$ref: '#/components/schemas/ReviewBatch'}}}
+    TemplateSuggestionPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                type: object
+                required: [template_version, score, reason]
+                properties:
+                  template_version: {$ref: '#/components/schemas/TemplateVersion'}
+                  score: {type: number, minimum: 0, maximum: 1}
+                  reason: {type: string}
+    SourceType: {enum: [template, regulation, policy, guideline]}
+    RegisterSourceRequest:
+      type: object
+      required: [source_family_id, name, source_type, document_id, document_version_id, applicable_document_types]
+      properties:
+        source_family_id: {$ref: '#/components/schemas/Uuid'}
+        name: {type: string, minLength: 1, maxLength: 200}
+        source_type: {$ref: '#/components/schemas/SourceType'}
+        document_id: {type: string}
+        document_version_id: {type: string}
+        applicable_document_types: {type: array, minItems: 1, items: {type: string}}
+    SourceVersion:
+      type: object
+      required: [id, source_family_id, name, source_type, document_id, document_version_id, applicable_document_types, status, created_at]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        source_family_id: {$ref: '#/components/schemas/Uuid'}
+        name: {type: string}
+        source_type: {$ref: '#/components/schemas/SourceType'}
+        document_id: {type: string}
+        document_version_id: {type: string}
+        applicable_document_types: {type: array, items: {type: string}}
+        status: {enum: [processing, ready, failed, archived]}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+    SourcePage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties: {items: {type: array, items: {$ref: '#/components/schemas/SourceVersion'}}}
+    TaskJob:
+      type: object
+      required: [id, kind, status, progress, revision, created_at, updated_at]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        kind: {enum: [rule_extraction, export]}
+        status: {enum: [queued, running, completed, failed]}
+        progress: {type: integer, minimum: 0, maximum: 100}
+        revision: {type: integer, minimum: 0}
+        error: {$ref: '#/components/schemas/NullableJobError'}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        updated_at: {$ref: '#/components/schemas/Timestamp'}
+    RuleCandidate:
+      type: object
+      required: [id, source_version_id, name, category, description, applicability, condition, default_severity, source_anchor, status, created_at, updated_at]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        source_version_id: {$ref: '#/components/schemas/Uuid'}
+        name: {type: string}
+        category: {type: string}
+        description: {type: string}
+        applicability: {type: object, additionalProperties: true}
+        condition: {type: object, additionalProperties: true}
+        threshold: {type: [object, 'null'], additionalProperties: true}
+        default_severity: {$ref: '#/components/schemas/Severity'}
+        source_anchor: {$ref: '#/components/schemas/EvidenceAnchor'}
+        status: {enum: [draft, confirmed, rejected, blocked, published]}
+        blocking_reason: {type: [string, 'null']}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        updated_at: {$ref: '#/components/schemas/Timestamp'}
+    RuleCandidatePage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties: {items: {type: array, items: {$ref: '#/components/schemas/RuleCandidate'}}}
+    CandidateDecisionRequest:
+      type: object
+      required: [decision]
+      properties:
+        decision: {enum: [confirm, reject]}
+        patch: {type: object, additionalProperties: true, default: {}}
+        comment: {type: [string, 'null'], maxLength: 2000}
+    PublishRuleRequest:
+      type: object
+      properties:
+        rule_id: {oneOf: [{$ref: '#/components/schemas/Uuid'}, {type: 'null'}]}
+    PublishStatus: {enum: [draft, published, archived]}
+    CreateTemplateVersionRequest:
+      type: object
+      required: [name, category, source_version_id, applicable_document_types, rule_version_ids]
+      properties:
+        template_id:
+          oneOf:
+            - $ref: '#/components/schemas/Uuid'
+            - type: 'null'
+          description: Null creates a new template family; otherwise creates the next immutable version.
+        name: {type: string, minLength: 1, maxLength: 200}
+        category: {type: string, minLength: 1, maxLength: 100}
+        description: {type: string, maxLength: 2000, default: ''}
+        source_version_id: {$ref: '#/components/schemas/Uuid'}
+        applicable_document_types: {type: array, minItems: 1, items: {type: string}}
+        rule_version_ids: {type: array, uniqueItems: true, items: {$ref: '#/components/schemas/Uuid'}}
+    TemplateVersion:
+      type: object
+      required: [id, template_id, name, category, version, source_version_id, applicable_document_types, rule_version_ids, status, created_at]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        template_id: {$ref: '#/components/schemas/Uuid'}
+        name: {type: string}
+        category: {type: string}
+        description: {type: string}
+        version: {type: integer, minimum: 1}
+        source_version_id: {$ref: '#/components/schemas/Uuid'}
+        applicable_document_types: {type: array, items: {type: string}}
+        rule_version_ids: {type: array, items: {$ref: '#/components/schemas/Uuid'}}
+        status: {$ref: '#/components/schemas/PublishStatus'}
+        published_at: {oneOf: [{$ref: '#/components/schemas/Timestamp'}, {type: 'null'}]}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+    TemplatePage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties: {items: {type: array, items: {$ref: '#/components/schemas/TemplateVersion'}}}
+    RuleVersion:
+      type: object
+      required: [id, rule_id, name, category, version, source_version_id, definition, source_anchor, configurable_fields, status, published_at]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        rule_id: {$ref: '#/components/schemas/Uuid'}
+        name: {type: string}
+        category: {type: string}
+        version: {type: integer, minimum: 1}
+        source_version_id: {$ref: '#/components/schemas/Uuid'}
+        definition: {type: object, additionalProperties: true}
+        source_anchor: {$ref: '#/components/schemas/EvidenceAnchor'}
+        configurable_fields: {type: array, items: {type: string}}
+        status: {enum: [published, disabled, archived]}
+        published_at: {$ref: '#/components/schemas/Timestamp'}
+    RuleVersionPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties: {items: {type: array, items: {$ref: '#/components/schemas/RuleVersion'}}}
+    RuleSelection:
+      type: object
+      required: [rule_version_id, enabled, overrides]
+      properties:
+        rule_version_id: {$ref: '#/components/schemas/Uuid'}
+        enabled: {type: boolean}
+        overrides: {type: object, additionalProperties: true}
+    ConfigurationWrite:
+      type: object
+      required: [name, rule_selections, sensitivity, analysis_profile_id, marking_mode]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 200}
+        rule_selections: {type: array, items: {$ref: '#/components/schemas/RuleSelection'}}
+        sensitivity: {type: integer, minimum: 0, maximum: 100}
+        analysis_profile_id: {enum: [accurate, fast]}
+        marking_mode: {enum: [standard, high_only]}
+    ReviewConfiguration:
+      allOf:
+        - $ref: '#/components/schemas/ConfigurationWrite'
+        - type: object
+          required: [id, invalid_rule_ids, revision, created_at, updated_at]
+          properties:
+            id: {$ref: '#/components/schemas/Uuid'}
+            invalid_rule_ids: {type: array, items: {$ref: '#/components/schemas/Uuid'}}
+            revision: {type: integer, minimum: 0}
+            created_at: {$ref: '#/components/schemas/Timestamp'}
+            updated_at: {$ref: '#/components/schemas/Timestamp'}
+    ConfigurationPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties: {items: {type: array, items: {$ref: '#/components/schemas/ReviewConfiguration'}}}
+    StartAnalysisRequest:
+      type: object
+      required: [batch_id, document_membership_ids, rule_selections, sensitivity, analysis_profile_id, marking_mode]
+      properties:
+        batch_id: {$ref: '#/components/schemas/Uuid'}
+        document_membership_ids: {type: array, minItems: 1, maxItems: 20, uniqueItems: true, items: {$ref: '#/components/schemas/Uuid'}}
+        template_version_id: {oneOf: [{$ref: '#/components/schemas/Uuid'}, {type: 'null'}]}
+        rule_selections: {type: array, minItems: 1, items: {$ref: '#/components/schemas/RuleSelection'}}
+        sensitivity: {type: integer, minimum: 0, maximum: 100}
+        analysis_profile_id: {enum: [accurate, fast]}
+        marking_mode: {enum: [standard, high_only]}
+        configuration_id: {oneOf: [{$ref: '#/components/schemas/Uuid'}, {type: 'null'}]}
+    AnalysisSnapshotSummary:
+      type: object
+      required: [id, batch_id, document_versions, rule_version_ids, sensitivity, analysis_profile_id, marking_mode, input_hash]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        batch_id: {$ref: '#/components/schemas/Uuid'}
+        document_versions: {type: array, items: {type: object, additionalProperties: true}}
+        template_version_id: {oneOf: [{$ref: '#/components/schemas/Uuid'}, {type: 'null'}]}
+        rule_version_ids: {type: array, items: {$ref: '#/components/schemas/Uuid'}}
+        sensitivity: {type: integer}
+        analysis_profile_id: {enum: [accurate, fast]}
+        marking_mode: {enum: [standard, high_only]}
+        input_hash: {type: string}
+    AnalysisDocumentJob:
+      type: object
+      required: [id, document_id, document_version_id, status, progress, attempt]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        document_id: {type: string}
+        document_version_id: {type: string}
+        status: {enum: [queued, running, completed, failed]}
+        progress: {type: integer, minimum: 0, maximum: 100}
+        attempt: {type: integer, minimum: 0}
+        error: {$ref: '#/components/schemas/NullableJobError'}
+    AnalysisJob:
+      type: object
+      required: [id, snapshot, status, progress, revision, result_revision, decision_revision, documents, created_at, updated_at]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        parent_job_id: {oneOf: [{$ref: '#/components/schemas/Uuid'}, {type: 'null'}]}
+        snapshot: {$ref: '#/components/schemas/AnalysisSnapshotSummary'}
+        status: {enum: [queued, running, completed, partial, failed]}
+        progress: {type: integer, minimum: 0, maximum: 100}
+        revision: {type: integer, minimum: 0}
+        result_revision: {type: integer, minimum: 0}
+        decision_revision: {type: integer, minimum: 0}
+        documents: {type: array, items: {$ref: '#/components/schemas/AnalysisDocumentJob'}}
+        error: {$ref: '#/components/schemas/NullableJobError'}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        updated_at: {$ref: '#/components/schemas/Timestamp'}
+    AnalysisJobPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties: {items: {type: array, items: {$ref: '#/components/schemas/AnalysisJob'}}}
+    RetryAnalysisRequest:
+      type: object
+      properties:
+        document_job_ids: {type: array, uniqueItems: true, items: {$ref: '#/components/schemas/Uuid'}}
+    Severity: {enum: [low, medium, high]}
+    PdfRect:
+      type: object
+      required: [x0, y0, x1, y1]
+      properties:
+        x0: {type: number, minimum: 0, maximum: 1000}
+        y0: {type: number, minimum: 0, maximum: 1000}
+        x1: {type: number, minimum: 0, maximum: 1000}
+        y1: {type: number, minimum: 0, maximum: 1000}
+    PdfEvidenceAnchor:
+      type: object
+      required: [kind, document_id, document_version_id, precision, quote, quote_sha256, validation_status, page_number, coordinate_space, rects, block_ids]
+      properties:
+        kind: {const: pdf}
+        document_id: {type: string}
+        document_version_id: {type: string}
+        precision: {enum: [exact, page]}
+        quote: {type: string, minLength: 1}
+        quote_sha256: {type: string}
+        validation_status: {enum: [valid, degraded, invalid]}
+        page_number: {type: integer, minimum: 1}
+        coordinate_space: {const: normalized-1000-top-left}
+        rects: {type: array, items: {$ref: '#/components/schemas/PdfRect'}}
+        block_ids: {type: array, minItems: 1, items: {type: string}}
+    DocxEvidenceAnchor:
+      type: object
+      required: [kind, document_id, document_version_id, precision, quote, quote_sha256, validation_status, container_kind, locator_id, document_order, start, end, block_id]
+      properties:
+        kind: {const: docx}
+        document_id: {type: string}
+        document_version_id: {type: string}
+        precision: {enum: [exact, block]}
+        quote: {type: string, minLength: 1}
+        quote_sha256: {type: string}
+        validation_status: {enum: [valid, degraded, invalid]}
+        container_kind: {enum: [paragraph, table_cell]}
+        locator_id: {type: string}
+        document_order: {type: integer, minimum: 0}
+        start: {type: integer, minimum: 0}
+        end: {type: integer, minimum: 1}
+        block_id: {type: string}
+    EvidenceAnchor:
+      oneOf:
+        - $ref: '#/components/schemas/PdfEvidenceAnchor'
+        - $ref: '#/components/schemas/DocxEvidenceAnchor'
+      discriminator:
+        propertyName: kind
+        mapping:
+          pdf: '#/components/schemas/PdfEvidenceAnchor'
+          docx: '#/components/schemas/DocxEvidenceAnchor'
+    Finding:
+      type: object
+      required: [id, analysis_job_id, snapshot_id, document_id, document_version_id, conclusion, severity, title, reason, suggestion, location_label, evidence_anchor, suppressed, created_at]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        analysis_job_id: {$ref: '#/components/schemas/Uuid'}
+        snapshot_id: {$ref: '#/components/schemas/Uuid'}
+        document_id: {type: string}
+        document_version_id: {type: string}
+        rule_version_id: {oneOf: [{$ref: '#/components/schemas/Uuid'}, {type: 'null'}]}
+        checker_id: {type: [string, 'null']}
+        conclusion: {enum: [direct_violation, deviation, insufficient_information, manual_review]}
+        severity: {$ref: '#/components/schemas/Severity'}
+        title: {type: string}
+        reason: {type: string}
+        suggestion: {type: string}
+        location_label: {type: string}
+        evidence_anchor: {$ref: '#/components/schemas/EvidenceAnchor'}
+        reference_anchor:
+          oneOf:
+            - $ref: '#/components/schemas/EvidenceAnchor'
+            - type: 'null'
+        conflict_group_id: {oneOf: [{$ref: '#/components/schemas/Uuid'}, {type: 'null'}]}
+        suppressed: {type: boolean}
+        decision:
+          oneOf:
+            - $ref: '#/components/schemas/HumanDecision'
+            - type: 'null'
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+    FindingPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [result_revision, counts]
+          properties:
+            result_revision: {type: integer, minimum: 0}
+            counts: {type: object, additionalProperties: {type: integer}}
+            items: {type: array, items: {$ref: '#/components/schemas/Finding'}}
+    FindingDecisionWrite:
+      type: object
+      required: [decision_type]
+      properties:
+        decision_type: {enum: [open, accepted, dismissed, resolved]}
+        comment: {type: [string, 'null'], maxLength: 5000}
+    OverallDecisionWrite:
+      type: object
+      required: [decision_type]
+      properties:
+        decision_type: {enum: [approved, rejected]}
+        comment: {type: [string, 'null'], maxLength: 5000}
+    HumanDecision:
+      type: object
+      required: [id, analysis_job_id, decision_type, revision, created_at, updated_at]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        analysis_job_id: {$ref: '#/components/schemas/Uuid'}
+        finding_id: {oneOf: [{$ref: '#/components/schemas/Uuid'}, {type: 'null'}]}
+        decision_type: {enum: [open, accepted, dismissed, resolved, approved, rejected]}
+        comment: {type: [string, 'null']}
+        revision: {type: integer, minimum: 0}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        updated_at: {$ref: '#/components/schemas/Timestamp'}
+    AuditEvent:
+      type: object
+      required: [id, event_type, target_type, target_id, payload, created_at]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        event_type: {type: string}
+        target_type: {type: string}
+        target_id: {type: string}
+        payload: {type: object, additionalProperties: true}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+    AuditEventPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties: {items: {type: array, items: {$ref: '#/components/schemas/AuditEvent'}}}
+    CreateConversationRequest:
+      type: object
+      required: [analysis_job_id]
+      properties:
+        analysis_job_id: {$ref: '#/components/schemas/Uuid'}
+    ReviewMessage:
+      type: object
+      required: [id, role, content, status, citations, created_at]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        request_id: {oneOf: [{$ref: '#/components/schemas/Uuid'}, {type: 'null'}]}
+        role: {enum: [user, assistant]}
+        content: {type: string}
+        status: {enum: [complete, incomplete]}
+        finding_id: {oneOf: [{$ref: '#/components/schemas/Uuid'}, {type: 'null'}]}
+        citations: {type: array, items: {$ref: '#/components/schemas/EvidenceAnchor'}}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+    ReviewConversation:
+      type: object
+      required: [id, analysis_job_id, revision, messages, created_at, updated_at]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        analysis_job_id: {$ref: '#/components/schemas/Uuid'}
+        revision: {type: integer, minimum: 0}
+        messages: {type: array, items: {$ref: '#/components/schemas/ReviewMessage'}}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        updated_at: {$ref: '#/components/schemas/Timestamp'}
+    ReviewStreamRequest:
+      type: object
+      required: [request_id, message, history]
+      properties:
+        request_id: {$ref: '#/components/schemas/Uuid'}
+        message: {type: string, minLength: 1, maxLength: 10000}
+        finding_id: {oneOf: [{$ref: '#/components/schemas/Uuid'}, {type: 'null'}]}
+        history:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            required: [role, content]
+            properties:
+              role: {enum: [user, assistant]}
+              content: {type: string}
+              status: {enum: [complete, incomplete], default: complete}
+    StopRequest:
+      type: object
+      required: [request_id]
+      properties: {request_id: {$ref: '#/components/schemas/Uuid'}}
+    StopResponse:
+      type: object
+      required: [request_id, accepted]
+      properties:
+        request_id: {$ref: '#/components/schemas/Uuid'}
+        accepted: {type: boolean}
+    CreateExportRequest:
+      type: object
+      properties:
+        format: {const: docx, default: docx}
+    ExportArtifact:
+      type: object
+      required: [id, analysis_job_id, status, format, result_revision, decision_revision, created_at]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        analysis_job_id: {$ref: '#/components/schemas/Uuid'}
+        status: {enum: [queued, running, completed, failed]}
+        format: {const: docx}
+        result_revision: {type: integer, minimum: 0}
+        decision_revision: {type: integer, minimum: 0}
+        filename: {type: [string, 'null']}
+        sha256: {type: [string, 'null']}
+        size_bytes: {type: [integer, 'null'], minimum: 0}
+        error: {$ref: '#/components/schemas/NullableJobError'}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        completed_at: {oneOf: [{$ref: '#/components/schemas/Timestamp'}, {type: 'null'}]}
+    JobError:
+      type: object
+      required: [code, message, retryable]
+      properties:
+        code: {type: string}
+        message: {type: string}
+        retryable: {type: boolean}
+    NullableJobError:
+      oneOf:
+        - $ref: '#/components/schemas/JobError'
+        - type: 'null'
+    PageMeta:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items: {type: array, items: {}}
+        total: {type: integer, minimum: 0}
+        page: {type: integer, minimum: 1}
+        page_size: {type: integer, minimum: 1, maximum: 200}

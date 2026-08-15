@@ -43,6 +43,7 @@ from services.utils import (
 from services.document_store import index_visibility_snapshot
 from services.visibility import ensure_visibility_mapping, response_body
 from elasticsearch import Elasticsearch
+from core.http_client import elasticsearch_client, httpx_client, requests_session
 
 logger = logging.getLogger(__name__)
 _visibility_v2_lock = threading.Lock()
@@ -88,7 +89,8 @@ def get_embeddings(texts: list[str], task: str = "retrieval.query", max_retries:
             if EMBED_IS_JINA:
                 payload["task"] = task
                 payload["dimensions"] = EMBED_DIMS
-            resp = requests.post(url, headers=EMBED_HEADERS, json=payload, timeout=60)
+            with requests_session() as session:
+                resp = session.post(url, headers=EMBED_HEADERS, json=payload, timeout=60)
             resp.raise_for_status()
             result = [d["embedding"] for d in resp.json()["data"]]
             _embed_cache[cache_key] = result
@@ -109,12 +111,7 @@ def get_embeddings(texts: list[str], task: str = "retrieval.query", max_retries:
 def get_es() -> Elasticsearch:
     global _es_instance
     if _es_instance is None:
-        _es_instance = Elasticsearch(
-            ES_HOST,
-            basic_auth=(ES_USER, ES_PASS),
-            verify_certs=False,
-            ssl_show_warn=False,
-        )
+        _es_instance = elasticsearch_client(ES_HOST, username=ES_USER, password=ES_PASS)
     return _es_instance
 
 
@@ -122,17 +119,16 @@ def get_es() -> Elasticsearch:
 
 def tavily_search(query: str, max_results: int = 3) -> list[dict]:
     """通过 Tavily API 搜索网络"""
-    resp = httpx.post(
-        "https://api.tavily.com/search",
+    with httpx_client(timeout=30) as client:
+        resp = client.post(
+            "https://api.tavily.com/search",
         json={
             "api_key": TAVILY_API_KEY,
             "query": query,
             "max_results": max_results,
             "search_depth": "advanced",
         },
-        verify=False,
-        timeout=30,
-    )
+        )
     resp.raise_for_status()
     data = resp.json()
     return [
@@ -159,8 +155,9 @@ def route_decision(query: str, local_context: str) -> str:
         "web"   — 需要网络搜索补充
     """
     try:
-        resp = httpx.post(
-            f"{LLM_API_BASE}/chat/completions",
+        with httpx_client(timeout=30) as client:
+            resp = client.post(
+                f"{LLM_API_BASE}/chat/completions",
             headers={
                 "Authorization": f"Bearer {LLM_API_KEY}",
                 "Content-Type": "application/json",
@@ -178,9 +175,7 @@ def route_decision(query: str, local_context: str) -> str:
                 "temperature": 0.0,
                 "stream": False,
             },
-            timeout=30,
-            verify=False,
-        )
+            )
         resp.raise_for_status()
         decision = resp.json()["choices"][0]["message"]["content"].strip().lower()
         # 只取 local 或 web

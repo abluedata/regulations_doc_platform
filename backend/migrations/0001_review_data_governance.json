@@ -1,0 +1,16 @@
+{
+  "version": "0001_review_data_governance",
+  "created_at": "2026-08-15T00:00:00Z",
+  "scope": ".review_data",
+  "description": "Initial governance migration marker for review jobs, batches, rules, audit events, eval reports, and backup manifests.",
+  "backup_manifest": "backup_manifest.json",
+  "managed_paths": [
+    "jobs/",
+    "batches/",
+    "rules/",
+    "reports/",
+    "audit.jsonl",
+    "schema_version.json"
+  ]
+}
+

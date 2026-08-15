@@ -35,10 +35,45 @@ const selectedTemplate = computed(
   () => review.templates.find((template) => template.id === review.selectedTemplateId) ?? review.templates[0],
 )
 
-onMounted(() => review.goToStep(Number(route.meta.reviewStep) || 2))
+const showCreate = ref(false)
+const creating = ref(false)
+const createError = ref('')
+const newTemplateName = ref('')
+const newTemplateCategory = ref('交易类')
+const newTemplateDescription = ref('')
+const createFromTender = ref(true)
+
+onMounted(() => {
+  review.goToStep(Number(route.meta.reviewStep) || 2)
+  void review.initialize()
+})
 
 function selectTemplate(id: string) {
   review.selectTemplate(id)
+}
+
+async function createTemplate() {
+  creating.value = true
+  createError.value = ''
+  try {
+    await review.createTemplate({
+      name: newTemplateName.value.trim() || '自定义范本',
+      category: newTemplateCategory.value,
+      description: newTemplateDescription.value.trim() || '根据招标文件生成的审查范本。',
+      applicable_document_types: createFromTender.value ? [documentTypeHint()] : [],
+    })
+    showCreate.value = false
+    newTemplateName.value = ''
+    newTemplateDescription.value = ''
+  } catch (err) {
+    createError.value = err instanceof Error ? err.message : '创建范本失败'
+  } finally {
+    creating.value = false
+  }
+}
+
+function documentTypeHint() {
+  return '商业合同'
 }
 
 async function goNext() {
@@ -91,7 +126,7 @@ async function goPrevious() {
             :selected="template.id === review.selectedTemplateId"
             @select="selectTemplate"
           />
-          <button class="custom-template" type="button">
+          <button class="custom-template" type="button" @click="showCreate = true">
             <span class="custom-template__icon" aria-hidden="true"><el-icon><Plus /></el-icon></span>
             <strong>创建自定义范本</strong>
             <span>构建您自己的规则集</span>
@@ -110,8 +145,8 @@ async function goPrevious() {
             <div class="document-preview__highlight"></div>
             <div class="document-preview__line document-preview__line--short"></div>
           </div>
-          <strong>NDA_Project_Apollo.pdf</strong>
-          <span>2 分钟前上传 · 14 页</span>
+          <strong>{{ review.files[0]?.name || '待上传文档' }}</strong>
+          <span>最近上传 · 已就绪</span>
         </section>
 
         <section class="match-panel">
@@ -133,6 +168,36 @@ async function goPrevious() {
     <ReviewFooter @previous="goPrevious" @next="goNext">
       选择后将立即开始分析
     </ReviewFooter>
+
+    <el-dialog v-model="showCreate" title="创建自定义范本" width="min(520px, 92vw)">
+      <form class="create-form" @submit.prevent="createTemplate">
+        <label>
+          <span>范本名称</span>
+          <input v-model="newTemplateName" type="text" placeholder="例如：招标采购评审范本" />
+        </label>
+        <label>
+          <span>分类</span>
+          <select v-model="newTemplateCategory">
+            <option>交易类</option>
+            <option>雇佣类</option>
+            <option>知识产权</option>
+          </select>
+        </label>
+        <label>
+          <span>描述</span>
+          <textarea v-model="newTemplateDescription" rows="3" placeholder="简述该范本的审查范围"></textarea>
+        </label>
+        <label class="create-form__check">
+          <input v-model="createFromTender" type="checkbox" />
+          <span>根据已上传招标文件自动归纳适用条款范围</span>
+        </label>
+        <p v-if="createError" class="create-error">{{ createError }}</p>
+        <div class="create-form__actions">
+          <el-button @click="showCreate = false">取消</el-button>
+          <el-button type="primary" native-type="submit" :loading="creating">创建范本</el-button>
+        </div>
+      </form>
+    </el-dialog>
   </div>
 </template>
 
@@ -418,6 +483,52 @@ async function goPrevious() {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+.create-form {
+  display: grid;
+  gap: 16px;
+}
+
+.create-form label:not(.create-form__check) {
+  display: grid;
+  gap: 7px;
+}
+
+.create-form label > span {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.create-form input[type="text"],
+.create-form textarea,
+.create-form select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.create-form__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+
+.create-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.create-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 @media (max-width: 1100px) {

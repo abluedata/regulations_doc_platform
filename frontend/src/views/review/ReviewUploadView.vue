@@ -27,7 +27,10 @@ const ocrEnabled = ref(true)
 
 const readyCount = computed(() => review.files.filter((file) => file.status === 'ready').length)
 
-onMounted(() => review.goToStep(Number(route.meta.reviewStep) || 1))
+onMounted(() => {
+  review.goToStep(Number(route.meta.reviewStep) || 1)
+  void review.initialize()
+})
 
 function fileIcon(file: ReviewFile) {
   return file.status === 'uploading' ? DocumentCopy : Document
@@ -49,31 +52,18 @@ function browseFiles() {
   fileInput.value?.click()
 }
 
-function formatFileSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
 function addSelectedFiles(event: Event) {
   const input = event.target as HTMLInputElement
   const selectedFiles = Array.from(input.files ?? [])
-  selectedFiles.forEach((file, index) => {
-    if (review.files.some((item) => item.name === file.name)) return
-    review.files.push({
-      id: `local-${review.files.length + index}-${file.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
-      name: file.name,
-      size: formatFileSize(file.size),
-      progress: 100,
-      status: 'ready',
-    })
-  })
+  const pending = selectedFiles.filter((file) => !review.files.some((item) => item.name === file.name))
+  if (pending.length) {
+    void review.uploadAndAddFiles(pending, batchName.value, documentType.value, ocrEnabled.value)
+  }
   input.value = ''
 }
 
 function removeFile(id: string) {
-  const index = review.files.findIndex((file) => file.id === id)
-  if (index >= 0) review.files.splice(index, 1)
+  review.removeFile(id)
 }
 
 async function goNext() {

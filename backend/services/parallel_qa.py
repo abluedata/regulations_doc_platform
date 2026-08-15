@@ -11,14 +11,13 @@
 
 import logging
 
-import httpx
-
 from core.config import (
     LLM_API_BASE,
     LLM_API_KEY,
     LLM_MODEL_FAST,
     PARALLEL_SEARCH_K,
 )
+from core.http_client import httpx_client
 
 logger = logging.getLogger(__name__)
 
@@ -84,8 +83,9 @@ def parallel_qa(query: str) -> dict:
     # 3. 一次 LLM
     _safe_log(f"生成回答（{len(context)} 字符 context，fast model）...")
     try:
-        resp = httpx.post(
-            f"{LLM_API_BASE}/chat/completions",
+        with httpx_client(timeout=120) as client:
+            resp = client.post(
+                f"{LLM_API_BASE}/chat/completions",
             headers={
                 "Authorization": f"Bearer {LLM_API_KEY}",
                 "Content-Type": "application/json",
@@ -106,9 +106,7 @@ def parallel_qa(query: str) -> dict:
                 "temperature": 0.3,
                 "stream": False,
             },
-            timeout=120,
-            verify=False,
-        )
+            )
         resp.raise_for_status()
         final_answer = resp.json()["choices"][0]["message"]["content"]
     except Exception as e:

@@ -29,6 +29,11 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return v in ("1", "true", "yes", "on")
 
 
+APP_ENV = _env("APP_ENV", "development").lower()
+REQUIRE_SECRETS = _env_bool("REQUIRE_SECRETS", APP_ENV in {"production", "prod"})
+TLS_CA_BUNDLE = _env("TLS_CA_BUNDLE") or _env("REQUESTS_CA_BUNDLE")
+
+
 # ─── Elasticsearch ─────────────────────────────────────────
 ES_HOST = _env("ES_HOST", "https://localhost:9200")
 ES_USER = _env("ES_USER", "elastic")
@@ -50,8 +55,18 @@ EMBED_IS_JINA  = "jina.ai" in EMBED_API_BASE
 TAVILY_API_KEY = _env("TAVILY_API_KEY")
 
 # ─── 分块参数 ────────────────────────────────────────────────
-CHUNK_SIZE = 512        # 单 chunk 字符数（中文保险条款按字符近似 token）
-CHUNK_OVERLAP = 128     # chunk 间重叠字符数
+# BAAI/bge-large-zh-v1.5 上下文仅 512 token，中文约 1 字 ≈ 1 token；
+# 实测中文文本超 ~616 字符即被 SiliconFlow 拒绝（HTTP 400 code 20015）。
+# chunk 还需叠加 [文档]/[章节] 头部注入与表格 markdown 语法（| --- |），
+# 因此从 512 降至 384，为头部/表格语法留足 token 余量。
+CHUNK_SIZE = 384        # 单 chunk 字符数（中文保险条款按字符近似 token）
+CHUNK_OVERLAP = 96      # chunk 间重叠字符数（按比例 ~25%）
+
+# ─── Embedding token 安全阈值 ────────────────────────────────
+# 分块上限 384 + 头部/表格语法余量后仍可能超出模型 512 token 上下文；
+# 该阈值为请求前截断兜底（保留 [文档]/[章节] 标题头部），
+# 确保任何超限 chunk 都不会导致整篇文档入库失败。
+EMBED_MAX_CHARS = 450
 
 # ─── 文档目录 ────────────────────────────────────────────────
 DOCS_DIR = os.path.join(str(_ROOT), "docs")

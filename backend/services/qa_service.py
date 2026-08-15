@@ -23,6 +23,7 @@ from core.config import (
     ANSWER_ATTACH_TABLES,
     ANSWER_MAX_TABLES,
 )
+from core.http_client import httpx_client
 from services.utils import extract_tables_from_hits
 from services.search import hybrid_search, format_results_for_llm
 
@@ -58,13 +59,8 @@ def ask_llm_stream(
     cancel_event: threading.Event | None = None,
 ) -> Iterator[str]:
     """流式生成回答；cancel_event 置位时停止。"""
-    import urllib3
-
-    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
     try:
-        with httpx.Client(
-            verify=False,
+        with httpx_client(
             timeout=httpx.Timeout(300.0, connect=15.0, read=300.0, write=30.0, pool=10.0),
             http2=False,
             trust_env=False,

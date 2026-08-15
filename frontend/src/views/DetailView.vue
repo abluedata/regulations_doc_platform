@@ -2,7 +2,6 @@
 import { onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { marked } from 'marked'
 import {
   Collection,
   Connection,
@@ -15,14 +14,13 @@ import {
 import { getHistoryDetail, deleteHistory } from '@/api/history'
 import { addFavorite } from '@/api/favorites'
 import type { SessionRecord } from '@/types'
+import SafeMarkdown from '@/components/SafeMarkdown.vue'
 
 const route = useRoute()
 const router = useRouter()
 const sessionId = ref('')
 const detail = ref<SessionRecord | null>(null)
 const loading = ref(false)
-
-marked.setOptions({ breaks: true, gfm: true })
 
 async function load(id?: string) {
   const sid = (id ?? sessionId.value).trim()
@@ -62,10 +60,6 @@ async function onDelete() {
   } catch (e: any) {
     ElMessage.error(e.message || '删除失败')
   }
-}
-
-function renderMd(s: string) {
-  return marked.parse(s || '') as string
 }
 
 onMounted(() => {
@@ -147,7 +141,7 @@ watch(
               <div v-if="m.role === 'user'" class="detail-msg__content">
                 <strong>{{ m.content }}</strong>
               </div>
-              <div v-else class="detail-msg__content" v-html="renderMd(m.content)" />
+              <SafeMarkdown v-else class="detail-msg__content" :content="m.content" />
             </article>
           </template>
           <template v-else>
@@ -157,7 +151,7 @@ watch(
             </article>
             <article class="detail-msg assistant">
               <div class="detail-msg__role" aria-hidden="true"><el-icon><Cpu /></el-icon></div>
-              <div class="detail-msg__content" v-html="renderMd(detail.answer)" />
+              <SafeMarkdown class="detail-msg__content" :content="detail.answer" />
             </article>
           </template>
         </div>

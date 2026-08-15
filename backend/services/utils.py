@@ -22,6 +22,7 @@ __all__ = [
     "is_valid_table_grid",
     "promote_raw_blocks",
     "extract_tables_from_hits",
+    "truncate_for_embedding",
 ]
 
 
@@ -415,3 +416,46 @@ def extract_tables_from_hits(hits: list[dict], max_tables: int = 2) -> list[dict
         if len(out) >= max_tables:
             break
     return out
+
+
+# ─── Embedding token 安全截断 ──────────────────────────────
+
+_EMBED_HEADER_LINE_RE = re.compile(r"^\[(文档|章节)\]")
+_SENT_END_RE = re.compile(r"[。！？；][^。！？；]*$")
+
+
+def truncate_for_embedding(text: str, max_chars: int = 450) -> str:
+    """Embedding 请求前的 token 安全截断兜底。
+
+    背景：BAAI/bge-large-zh-v1.5 上下文 512 token，中文约 1 字 ≈ 1 token；
+    超 ~616 字符会被 SiliconFlow 拒绝（HTTP 400 code 20015）。
+    分块上限即使收紧到 384，表格单行超长/头部注入仍可能越界，
+    因此在请求前按阈值截断，确保任何超限 chunk 都不会导致整篇文档入库失败。
+
+    规则：
+      1. len(text) <= max_chars → 原样返回；
+      2. 否则保留开头连续的 [文档] / [章节] 标题头部行（召回语义依赖它们），
+         正文在剩余预算内优先按句界（。！？；换行）截断，避免残句；
+      3. 头部本身超过阈值 → 硬截断到阈值。
+    """
+    if not isinstance(text, str):
+        return text
+    if len(text) <= max_chars:
+        return text
+
+    header_len = 0
+    for line in text.split("\n"):
+        if _EMBED_HEADER_LINE_RE.match(line):
+            header_len += len(line) + 1  # 含换行符
+        else:
+            break
+
+    if header_len >= max_chars:
+        return text[:max_chars]
+
+    body_budget = max_chars - header_len
+    window = text[header_len : header_len + body_budget]
+    # 优先按句界（。！？；）截断，避免残句；无句界标点（如巨型表格行）则硬截断。
+    m = _SENT_END_RE.search(window)
+    cut = m.start() + 1 if m else body_budget
+    return text[:header_len] + window[:cut]

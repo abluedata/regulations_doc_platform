@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "doc_id": "termination-agreement-003",
+  "doc_type": "termination_agreement",
+  "title": "解除协议金标样本 003",
+  "language": "zh-CN",
+  "source": {
+    "kind": "synthetic_fixture",
+    "license": "project-internal-eval-only",
+    "description": "法律安全的合成解除协议片段，用于评测工具开发和回归门验证。"
+  },
+  "annotation": {
+    "annotator": "w1_single_annotator",
+    "reviewer": "w1_independent_reviewer",
+    "reviewed_at": "2026-08-15",
+    "status": "reviewed"
+  },
+  "enabled_rules": [
+    "severance_underpayment",
+    "notice_or_pay_missing",
+    "payment_deadline_missing",
+    "release_scope_overbroad",
+    "social_insurance_unsettled",
+    "non_compete_overbroad",
+    "confidentiality_overbroad",
+    "evidence_missing"
+  ],
+  "contract_excerpt": "解除协议样本003。双方确认支付经济补偿，但没有写明具体支付日期或逾期责任。双方确认本协议签署后办理离职交接。",
+  "issues": [
+    {
+      "issue_id": "ta-003-i1",
+      "rule_id": "payment_deadline_missing",
+      "severity": "medium",
+      "text": "补偿款支付期限不明确。",
+      "explanation": "支付期限缺失会影响履约和争议处理。",
+      "location": {
+        "section": "解除与补偿",
+        "paragraph": 2
+      }
+    },
+    {
+      "issue_id": "ta-003-i2",
+      "rule_id": "non_compete_overbroad",
+      "severity": "medium",
+      "text": "竞业限制义务缺少补偿、范围或期限边界。",
+      "explanation": "竞业限制应有合理期限、地域、范围和经济补偿。",
+      "location": {
+        "section": "附随义务",
+        "paragraph": 4
+      }
+    }
+  ],
+  "refusal_questions": [
+    {
+      "question_id": "ta-003-rq1",
+      "question": "员工上一家公司的收入证明是多少？",
+      "answerable": false,
+      "expected_refusal": true,
+      "rationale": "金标文本未包含外部收入证明信息。"
+    },
+    {
+      "question_id": "ta-003-rq2",
+      "question": "本协议是否涉及解除劳动合同？",
+      "answerable": true,
+      "expected_refusal": false,
+      "rationale": "标题和正文均说明解除协议。"
+    }
+  ]
+}
+

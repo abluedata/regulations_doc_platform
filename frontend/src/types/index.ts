@@ -84,14 +84,17 @@ export interface DocPreview {
   }
 }
 
-export type ReviewAnalysisStatus = 'idle' | 'running' | 'complete' | 'approved' | 'rejected'
+export type ReviewAnalysisStatus = 'idle' | 'loading' | 'queued' | 'parsing' | 'running' | 'complete' | 'complete_degraded' | 'failed' | 'cancelled' | 'approved' | 'rejected'
 
 export interface ReviewFile {
   id: string
   name: string
   size: string
   progress: number
-  status: 'ready' | 'uploading' | 'queued'
+  status: 'ready' | 'uploading' | 'queued' | 'parsing' | 'failed'
+  error?: string
+  documentId?: string
+  documentVersionId?: string
 }
 
 export interface ReviewTemplate {
@@ -123,4 +126,9 @@ export interface ReviewRisk {
   description: string
   currentText?: string
   referenceText?: string
+  quote?: string
+  suggestion?: string
+  confidence?: string
+  evidence?: Record<string, unknown>
+  action?: 'pending' | 'accepted' | 'dismissed'
 }

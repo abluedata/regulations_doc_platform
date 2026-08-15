@@ -1,196 +1,288 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
-import type {
-  ReviewAnalysisStatus,
-  ReviewClause,
-  ReviewFile,
-  ReviewRisk,
-  ReviewTemplate,
-} from '@/types'
+import { computed, ref } from 'vue'
+import * as reviewApi from '@/api/review'
+import { uploadDoc } from '@/api/docs'
+import type { ReviewClause, ReviewFile, ReviewRisk, ReviewTemplate, ReviewAnalysisStatus } from '@/types'
 
-const DEMO_FILES: ReviewFile[] = [
-  { id: 'msa-services', name: 'MSA_Corp_Services_v2.pdf', size: '1.4 MB', progress: 100, status: 'ready' },
-  { id: 'nda-standard', name: 'NDA_Standard_Final.docx', size: '892 KB', progress: 68, status: 'uploading' },
-  { id: 'lease-annex', name: 'Lease_Agreement_Annex_A.pdf', size: '4.2 MB', progress: 0, status: 'queued' },
-]
-
-const DEMO_TEMPLATES: ReviewTemplate[] = [
-  {
-    id: 'mutual-nda',
-    name: '互保密协议',
-    category: '保密协议',
-    description: '用于商业探索期间相互交换信息的标准保密协议。',
-    checks: 18,
-    icon: 'lock',
-    popular: true,
-  },
-  {
-    id: 'services',
-    name: '主服务协议',
-    category: '商业合同',
-    description: '覆盖服务范围、付款、责任和终止条件的商业合同审查。',
-    checks: 24,
-    icon: 'description',
-  },
-  {
-    id: 'employment-agreement',
-    name: '录用通知书',
-    category: '人事政策',
-    description: '包含竞业禁止和知识产权转让条款的高管级雇佣协议。',
-    checks: 15,
-    icon: 'badge',
-  },
-  {
-    id: 'ip-assignment',
-    name: '知识产权转让',
-    category: '知识产权法',
-    description: '知识产权、发明和专利代码资产的法律转让。',
-    checks: 21,
-    icon: 'copyright',
-  },
-  {
-    id: 'lease-agreement',
-    name: '租赁协议',
-    category: '房地产',
-    description: '专注于租金递增和维护义务的商业房地产租赁分析。',
-    checks: 42,
-    icon: 'real_estate_agent',
-  },
-]
-
-const DEMO_CLAUSES: ReviewClause[] = [
-  {
-    id: 'payment-terms',
-    group: 'finance',
-    title: '付款条款',
-    description: '监控 Net-X 天数及提前付款折扣。',
-    enabled: true,
-    threshold: '阈值: 30 天',
-  },
-  {
-    id: 'liability-cap',
-    group: 'finance',
-    title: '责任限额',
-    description: '累计法律责任限额与合同价值对比。',
-    enabled: true,
-    priority: 'high',
-  },
-  {
-    id: 'data-privacy',
-    group: 'compliance',
-    title: '数据隐私',
-    description: 'GDPR/CCPA 数据传输协议。',
-    enabled: true,
-  },
-  {
-    id: 'non-compete',
-    group: 'compliance',
-    title: '竞业禁止',
-    description: '限制性契约及适用范围。',
-    enabled: false,
-    disabled: true,
-  },
-]
-
-const DEMO_RISKS: ReviewRisk[] = [
-  {
-    id: 'unlimited-liability',
-    level: 'high',
-    section: '第 3.1 节',
-    title: '无限制责任',
-    description: '该条款实际上取消了对间接损害的限制，使公司面临无限的潜在索赔风险。',
-    currentText: '“total aggregate liability... limited to $5,000,000 USD.”',
-    referenceText: '“Liability shall be limited to 1x the annual contract value.”',
-  },
-  {
-    id: 'termination-notice',
-    level: 'medium',
-    section: '第 6.2 节',
-    title: '非标准终止条款',
-    description: '90 天的通知期长于标准 30 天的公司政策。',
-  },
-  {
-    id: 'ambiguous-definition',
-    level: 'low',
-    section: '第 1.4 节',
-    title: '定义模糊',
-    description: '“交付物”的定义可以更加细化，以保护核心专有知识产权。',
-  },
-]
+type LoadState = 'idle' | 'loading' | 'ready' | 'empty' | 'error'
 
 export const useReviewStore = defineStore('review', () => {
   const currentStep = ref(1)
-  const selectedTemplateId = ref('mutual-nda')
+  const batchId = ref<string | null>(null)
+  const selectedTemplateId = ref<string | null>(null)
   const sensitivity = ref(85)
+  const markingMode = ref<'standard' | 'high_only'>('standard')
+  const analysisProfile = ref<'accurate' | 'fast'>('accurate')
   const analysisStatus = ref<ReviewAnalysisStatus>('idle')
-  const files = ref<ReviewFile[]>(DEMO_FILES.map((item) => ({ ...item })))
-  const templates = ref<ReviewTemplate[]>(DEMO_TEMPLATES.map((item) => ({ ...item })))
-  const clauses = ref<ReviewClause[]>(DEMO_CLAUSES.map((item) => ({ ...item })))
-  const risks = ref<ReviewRisk[]>(DEMO_RISKS.map((item) => ({ ...item })))
+  const analysisJobId = ref<string | null>(null)
+  const analysisRevision = ref(0)
+  const decisionRevision = ref(0)
+  const files = ref<ReviewFile[]>([])
+  const templates = ref<ReviewTemplate[]>([])
+  const clauses = ref<ReviewClause[]>([])
+  const risks = ref<ReviewRisk[]>([])
+  const loadState = ref<LoadState>('idle')
+  const error = ref('')
+  const partialFailure = ref(false)
+  const activeFindingId = ref<string | null>(null)
+  let streamAbort: AbortController | null = null
 
-  function nextStep() {
-    currentStep.value = Math.min(4, currentStep.value + 1)
-  }
+  const readyCount = computed(() => files.value.filter((file) => file.status === 'ready').length)
+  const enabledClauses = computed(() => clauses.value.filter((clause) => clause.enabled))
 
-  function previousStep() {
-    currentStep.value = Math.max(1, currentStep.value - 1)
-  }
-
+  function nextStep() { currentStep.value = Math.min(4, currentStep.value + 1) }
+  function previousStep() { currentStep.value = Math.max(1, currentStep.value - 1) }
   function goToStep(step: number) {
     if (!Number.isFinite(step)) return
     currentStep.value = Math.min(4, Math.max(1, Math.round(step)))
   }
 
-  function selectTemplate(id: string) {
-    if (!templates.value.some((item) => item.id === id)) return
-    selectedTemplateId.value = id
+  async function initialize() {
+    if (loadState.value === 'loading') return
+    loadState.value = 'loading'
+    error.value = ''
+    try {
+      await Promise.all([loadTemplates(), loadRules()])
+      loadState.value = templates.value.length || clauses.value.length ? 'ready' : 'empty'
+    } catch (err) {
+      error.value = toMessage(err)
+      loadState.value = 'error'
+    }
   }
 
+  async function loadTemplates() {
+    const { data } = await reviewApi.listTemplates()
+    templates.value = data.items.map((item) => ({
+      id: item.id,
+      name: item.name,
+      category: item.category,
+      description: item.description || '已发布的审查范本。',
+      checks: item.rule_version_ids.length,
+      icon: 'description',
+    }))
+    if (!selectedTemplateId.value && templates.value[0]) selectedTemplateId.value = templates.value[0].id
+  }
+
+  async function loadRules() {
+    const { data } = await reviewApi.listRules()
+    clauses.value = data.items.map((item) => ({
+      id: item.id,
+      group: item.category.toLowerCase().includes('finance') || item.category.includes('财务') ? 'finance' : 'compliance',
+      title: item.name,
+      description: String(item.definition.description || '已发布的审查规则。'),
+      enabled: item.status === 'published',
+      priority: item.severity === 'high' ? 'high' : undefined,
+      threshold: item.llm_fallback ? 'AI 检查' : '确定性检查',
+    }))
+  }
+
+  async function createRule(payload: {
+    name: string
+    category?: string
+    severity?: 'low' | 'medium' | 'high'
+    definition?: Record<string, unknown>
+    llm_fallback?: boolean
+  }) {
+    const { data } = await reviewApi.createRule(payload)
+    await loadRules()
+    return data
+  }
+
+  async function createTemplate(payload: {
+    name: string
+    category?: string
+    description?: string
+    source_version_id?: string
+    applicable_document_types?: string[]
+    rule_version_ids?: string[]
+  }) {
+    const sourceVersionId = payload.source_version_id || templates.value[0]?.id || ''
+    const { data } = await reviewApi.createTemplate({
+      name: payload.name,
+      category: payload.category,
+      description: payload.description,
+      source_version_id: sourceVersionId,
+      applicable_document_types: payload.applicable_document_types || [],
+      rule_version_ids: payload.rule_version_ids || enabledClauses.value.map((clause) => clause.id),
+    })
+    await loadTemplates()
+    return data
+  }
+
+  async function ensureBatch(name: string, documentType: string, ocrRequired: boolean) {
+    if (batchId.value) return batchId.value
+    const { data } = await reviewApi.createBatch({ name, document_type: documentType, ocr_required: ocrRequired })
+    batchId.value = data.id
+    return data.id
+  }
+
+  async function uploadAndAddFiles(fileList: File[], batchName: string, documentType: string, ocrRequired: boolean) {
+    const id = await ensureBatch(batchName, documentType, ocrRequired)
+    for (const file of fileList) {
+      const local: ReviewFile = { id: `upload-${crypto.randomUUID()}`, name: file.name, size: formatSize(file.size), progress: 0, status: 'uploading' }
+      files.value.push(local)
+      try {
+        const upload = await uploadDoc(file, (progress) => { local.progress = progress })
+        const membership = await reviewApi.addBatchDocument(id, {
+          document_id: upload.data.id,
+          document_version_id: upload.data.id,
+          filename: upload.data.filename,
+          status: upload.data.status === 'ready' ? 'ready' : 'queued',
+        })
+        local.id = membership.data.id
+        local.documentId = upload.data.id
+        local.documentVersionId = upload.data.id
+        local.status = membership.data.status === 'ready' ? 'ready' : 'queued'
+        local.progress = local.status === 'ready' ? 100 : 65
+      } catch (err) {
+        local.status = 'failed'
+        local.error = toMessage(err)
+      }
+    }
+  }
+
+  async function removeFile(id: string) {
+    const index = files.value.findIndex((item) => item.id === id)
+    if (index < 0) return
+    if (batchId.value && !id.startsWith('upload-')) await reviewApi.removeBatchDocument(batchId.value, id)
+    files.value.splice(index, 1)
+  }
+
+  function selectTemplate(id: string) {
+    if (templates.value.some((item) => item.id === id)) selectedTemplateId.value = id
+  }
   function toggleClause(id: string) {
     const clause = clauses.value.find((item) => item.id === id)
-    if (!clause || clause.disabled) return
-    clause.enabled = !clause.enabled
+    if (clause && !clause.disabled) clause.enabled = !clause.enabled
   }
-
   function setSensitivity(value: number) {
-    if (!Number.isFinite(value)) return
-    sensitivity.value = Math.min(100, Math.max(0, Math.round(value)))
+    if (Number.isFinite(value)) sensitivity.value = Math.min(100, Math.max(0, Math.round(value)))
   }
 
-  function startAnalysis() {
-    if (analysisStatus.value !== 'running') analysisStatus.value = 'running'
+  async function startAnalysis() {
+    if (!batchId.value) {
+      error.value = '请先上传文档并创建批次'
+      analysisStatus.value = 'failed'
+      throw new Error('尚未创建审查批次，请先在第一步上传文档')
+    }
+    const memberships = files.value.filter((file) => file.status === 'ready' || file.status === 'queued').map((file) => file.id)
+    if (!memberships.length || !enabledClauses.value.length) throw new Error('至少需要一个已就绪文件和一条启用规则')
+    analysisStatus.value = 'loading'
+    error.value = ''
+    try {
+      const { data } = await reviewApi.startAnalysis({
+        batch_id: batchId.value,
+        document_membership_ids: memberships,
+        template_version_id: selectedTemplateId.value,
+        rule_selections: enabledClauses.value.map((clause) => ({ rule_version_id: clause.id, enabled: true, overrides: {} })),
+        sensitivity: sensitivity.value,
+        analysis_profile_id: analysisProfile.value,
+        marking_mode: markingMode.value,
+      }, crypto.randomUUID())
+      applyJob(data)
+      await loadFindings()
+      subscribeAnalysis()
+    } catch (err) {
+      error.value = toMessage(err)
+      analysisStatus.value = 'failed'
+      throw err
+    }
   }
 
-  function completeAnalysis() {
-    if (analysisStatus.value === 'running') analysisStatus.value = 'complete'
+  function completeAnalysis() { if (analysisStatus.value === 'running' || analysisStatus.value === 'loading') analysisStatus.value = 'complete' }
+  function approveDraft() { if (analysisStatus.value === 'complete') analysisStatus.value = 'approved' }
+  function rejectChanges() { if (analysisStatus.value === 'complete') analysisStatus.value = 'rejected' }
+
+  async function refreshJob() {
+    if (!analysisJobId.value) return
+    const { data } = await reviewApi.getAnalysisJob(analysisJobId.value)
+    applyJob(data)
+    await loadFindings()
   }
 
-  function approveDraft() {
-    if (analysisStatus.value === 'complete') analysisStatus.value = 'approved'
+  async function loadFindings() {
+    if (!analysisJobId.value) return
+    const { data } = await reviewApi.listFindings(analysisJobId.value)
+    risks.value = data.items.map((item) => ({
+      id: item.id,
+      level: item.severity,
+      section: item.location_label || '原文定位',
+      title: item.title,
+      description: item.reason,
+      currentText: item.quote,
+      quote: item.quote,
+      referenceText: item.suggestion,
+      suggestion: item.suggestion,
+      confidence: item.confidence || 'llm_unknown',
+      evidence: item.evidence_anchor,
+      action: item.decision?.decision_type === 'accepted' ? 'accepted' : item.decision?.decision_type === 'dismissed' ? 'dismissed' : 'pending',
+    }))
+    if (!activeFindingId.value && risks.value[0]) activeFindingId.value = risks.value[0].id
   }
 
-  function rejectChanges() {
-    if (analysisStatus.value === 'complete') analysisStatus.value = 'rejected'
+  function subscribeAnalysis() {
+    if (!analysisJobId.value) return
+    streamAbort?.abort()
+    streamAbort = new AbortController()
+    void reviewApi.streamAnalysis(analysisJobId.value, {
+      onIssues: async () => { await loadFindings() },
+      onComplete: async (data) => {
+        analysisStatus.value = data.status as ReviewAnalysisStatus
+        partialFailure.value = data.status === 'complete_degraded'
+        await refreshJob()
+      },
+      onError: (data) => { error.value = data.message; analysisStatus.value = 'failed' },
+    }, streamAbort.signal).catch((err) => {
+      if (err.name !== 'AbortError') error.value = toMessage(err)
+    })
   }
+
+  async function decideRisk(findingId: string, decision: 'accepted' | 'dismissed', comment: string) {
+    if (!analysisJobId.value) return
+    await reviewApi.decideFinding(findingId, { decision_type: decision, comment }, decisionRevision.value)
+    decisionRevision.value += 1
+    await loadFindings()
+  }
+
+  async function finalizeDraft(decision: 'approved' | 'rejected', comment = '') {
+    if (!analysisJobId.value) return
+    await reviewApi.decideOverall(analysisJobId.value, { decision_type: decision, comment }, decisionRevision.value)
+    decisionRevision.value += 1
+    analysisStatus.value = decision
+  }
+
+  async function exportReport() {
+    if (!analysisJobId.value) throw new Error('当前没有可导出的审查任务')
+    return reviewApi.createExport(analysisJobId.value, crypto.randomUUID())
+  }
+
+  function applyJob(job: reviewApi.ReviewJob) {
+    analysisJobId.value = job.id
+    analysisStatus.value = job.status
+    analysisRevision.value = job.result_revision
+    decisionRevision.value = job.decision_revision
+    partialFailure.value = job.status === 'complete_degraded' || job.documents.some((item) => item.status === 'failed')
+  }
+
+  function resetError() { error.value = '' }
 
   return {
-    currentStep,
-    selectedTemplateId,
-    sensitivity,
-    analysisStatus,
-    files,
-    templates,
-    clauses,
-    risks,
-    nextStep,
-    previousStep,
-    goToStep,
-    selectTemplate,
-    toggleClause,
-    setSensitivity,
-    startAnalysis,
-    completeAnalysis,
-    approveDraft,
-    rejectChanges,
+    currentStep, batchId, selectedTemplateId, sensitivity, markingMode, analysisProfile,
+    analysisStatus, analysisJobId, analysisRevision, decisionRevision, files, templates, clauses, risks,
+    loadState, error, partialFailure, activeFindingId, readyCount, enabledClauses,
+    nextStep, previousStep, goToStep, initialize, loadTemplates, loadRules, createRule, createTemplate, ensureBatch,
+    uploadAndAddFiles, removeFile, selectTemplate, toggleClause, setSensitivity, startAnalysis,
+    refreshJob, loadFindings, subscribeAnalysis, decideRisk, finalizeDraft, exportReport, resetError,
+    completeAnalysis, approveDraft, rejectChanges,
   }
 })
+
+function formatSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function toMessage(error: unknown) {
+  return error instanceof Error ? error.message : '审查服务暂时不可用'
+}

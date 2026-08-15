@@ -2,6 +2,9 @@
 import { computed, nextTick, ref } from 'vue'
 import { ChatDotRound, Delete, Promotion } from '@element-plus/icons-vue'
 import type { ReviewRisk } from '@/types'
+import { useReviewStore } from '@/stores/review'
+import { getActivePinia } from 'pinia'
+import { createConversation, streamReviewAssistant } from '@/api/review'
 
 type AssistantRole = 'user' | 'assistant'
 
@@ -9,15 +12,20 @@ interface AssistantMessage {
   id: number
   role: AssistantRole
   content: string
+  citations?: Array<Record<string, unknown>>
 }
 
 const props = defineProps<{
   risk?: ReviewRisk
 }>()
+const emit = defineEmits<{ locate: [anchor: Record<string, unknown>] }>()
+const store = getActivePinia() ? useReviewStore() : null
 
 const input = ref('')
 const nextMessageId = ref(2)
 const messageList = ref<HTMLElement | null>(null)
+const conversationId = ref('')
+const isStreaming = ref(false)
 const messages = ref<AssistantMessage[]>([
   {
     id: 1,
@@ -49,8 +57,28 @@ async function sendQuestion(question = input.value) {
   if (!normalized) return
 
   messages.value.push({ id: nextMessageId.value++, role: 'user', content: normalized })
-  messages.value.push({ id: nextMessageId.value++, role: 'assistant', content: buildAnswer(normalized) })
+  const answer: AssistantMessage = { id: nextMessageId.value++, role: 'assistant', content: '' }
+  messages.value.push(answer)
   input.value = ''
+  if (!store?.analysisJobId) {
+    answer.content = buildAnswer(normalized)
+  } else {
+    isStreaming.value = true
+    try {
+      if (!conversationId.value) conversationId.value = (await createConversation(store.analysisJobId)).data.id
+      await streamReviewAssistant(conversationId.value, {
+        request_id: crypto.randomUUID(), message: normalized, finding_id: props.risk?.id,
+        history: messages.value.slice(0, -2).map(({ role, content }) => ({ role, content })),
+      }, {
+        onToken: (data) => { answer.content += String(data.content ?? data.token ?? '') },
+        onDone: (data) => { answer.citations = Array.isArray(data.citations) ? data.citations.filter(Boolean) : [] },
+        onError: (data) => { answer.content = data.message || '当前证据不足，无法回答该问题。' },
+      })
+      if (!answer.content) answer.content = '当前审查任务没有可引用的证据，无法回答该问题。'
+    } catch {
+      answer.content = '审查问答服务暂时不可用，请稍后重试。'
+    } finally { isStreaming.value = false }
+  }
   await nextTick()
   if (messageList.value) messageList.value.scrollTop = messageList.value.scrollHeight
 }
@@ -92,7 +120,10 @@ function clearMessages() {
         :data-role="message.role"
       >
         <span class="assistant-message__label">{{ message.role === 'assistant' ? '助手' : '你' }}</span>
-        <p>{{ message.content }}</p>
+        <p>{{ message.content }}<span v-if="isStreaming && message === messages.at(-1)" class="sr-only">正在生成回答</span></p>
+        <div v-if="message.citations?.length" class="assistant-citations" aria-label="回答引用">
+          <button v-for="(citation, index) in message.citations" :key="index" type="button" @click="emit('locate', citation)">定位引用 {{ index + 1 }}</button>
+        </div>
       </div>
     </div>
 
@@ -117,7 +148,7 @@ function clearMessages() {
           <button
             data-test="assistant-send"
             type="button"
-            :disabled="!input.trim()"
+            :disabled="!input.trim() || isStreaming"
             aria-label="发送问题"
             @click="sendQuestion()"
           >
@@ -127,7 +158,7 @@ function clearMessages() {
       </div>
     </form>
 
-    <p class="assistant-disclaimer">回答仅用于界面演示，不构成法律意见。</p>
+    <p class="assistant-disclaimer">回答基于当前审查证据，不构成法律意见。</p>
   </section>
 </template>
 
@@ -241,7 +272,7 @@ function clearMessages() {
 }
 
 .assistant-suggestions button {
-  min-height: var(--control-height);
+  min-height: 44px;
   padding: 6px 10px;
   border: 1px solid var(--outline-soft);
   border-radius: var(--radius-sm);
@@ -296,9 +327,9 @@ function clearMessages() {
 
 .assistant-input-row button {
   display: grid;
-  width: var(--control-height);
-  height: var(--control-height);
-  flex: 0 0 var(--control-height);
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
   place-items: center;
   padding: 0;
   border: 0;
@@ -306,6 +337,13 @@ function clearMessages() {
   color: #ffffff;
   background: var(--action);
   cursor: pointer;
+}
+
+.assistant-citations { display: flex; flex-wrap: wrap; gap: 6px; }
+.assistant-citations button { min-height: 44px; border: 1px solid var(--outline); color: var(--action); background: var(--surface); cursor: pointer; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
 
 .assistant-input-row button:disabled {

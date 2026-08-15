@@ -5,6 +5,7 @@ import type { ReviewRisk } from '@/types'
 import { useReviewStore } from '@/stores/review'
 import { getActivePinia } from 'pinia'
 import { createConversation, streamReviewAssistant } from '@/api/review'
+import type { ReviewCitation } from '@/api/review'
 
 type AssistantRole = 'user' | 'assistant'
 
@@ -12,45 +13,38 @@ interface AssistantMessage {
   id: number
   role: AssistantRole
   content: string
-  citations?: Array<Record<string, unknown>>
+  citations?: ReviewCitation[]
+  refused?: boolean
+  error?: boolean
+  status?: string
 }
 
 const props = defineProps<{
   risk?: ReviewRisk
 }>()
-const emit = defineEmits<{ locate: [anchor: Record<string, unknown>] }>()
+const emit = defineEmits<{ locate: [anchor: ReviewCitation] }>()
 const store = getActivePinia() ? useReviewStore() : null
 
 const input = ref('')
 const nextMessageId = ref(2)
 const messageList = ref<HTMLElement | null>(null)
-const conversationId = ref('')
+const conversationByDocument = new Map<string, string>()
 const isStreaming = ref(false)
+const selectedMembershipId = ref(store?.files.find((file) => file.status === 'ready')?.id ?? '')
 const messages = ref<AssistantMessage[]>([
   {
     id: 1,
     role: 'assistant',
-    content: '我可以结合当前风险解释条款、比较标准模板，并给出修改方向。',
+    content: '请选择当前任务中的一份文档。回答只依据该文档原文，并提供可定位引用。',
   },
 ])
 
 const suggestions = ['为什么被判定为风险？', '建议如何修改？', '与标准模板有什么差异？']
 const contextLabel = computed(() =>
-  props.risk ? `${props.risk.section} · ${props.risk.title}` : '尚未选择风险条款',
+  selectedDocument.value ? `当前文档 · ${selectedDocument.value.name}` : '尚未选择可问答文档',
 )
-
-function buildAnswer(question: string) {
-  const risk = props.risk
-  if (!risk) return '请先在“审查发现”中选择一项风险，我会以该条款作为回答上下文。'
-
-  if (question.includes('修改') || question.includes('建议')) {
-    return `${risk.title}建议采用明确、可量化的限制。${risk.referenceText ? `可参考：${risk.referenceText}` : '建议补充适用范围、金额或期限。'}`
-  }
-  if (question.includes('差异') || question.includes('模板')) {
-    return `${risk.title}位于${risk.section}。当前文本与标准模板的主要差异是：${risk.currentText ?? risk.description}${risk.referenceText ? `；标准参考为：${risk.referenceText}` : '。'}`
-  }
-  return `${risk.title}被标记为${risk.level === 'high' ? '高' : risk.level === 'medium' ? '中' : '低'}风险，因为${risk.description}`
-}
+const readyDocuments = computed(() => store?.files.filter((file) => file.status === 'ready') ?? [])
+const selectedDocument = computed(() => readyDocuments.value.find((file) => file.id === selectedMembershipId.value))
 
 async function sendQuestion(question = input.value) {
   const normalized = question.trim()
@@ -60,19 +54,30 @@ async function sendQuestion(question = input.value) {
   const answer: AssistantMessage = { id: nextMessageId.value++, role: 'assistant', content: '' }
   messages.value.push(answer)
   input.value = ''
-  if (!store?.analysisJobId) {
-    answer.content = buildAnswer(normalized)
+  if (!store?.analysisJobId || !selectedDocument.value) {
+    answer.content = '请先选择当前审查任务中已就绪的文档。'
+    answer.error = true
   } else {
     isStreaming.value = true
     try {
-      if (!conversationId.value) conversationId.value = (await createConversation(store.analysisJobId)).data.id
-      await streamReviewAssistant(conversationId.value, {
+      let conversationId = conversationByDocument.get(selectedDocument.value.id)
+      if (!conversationId) {
+        conversationId = (await createConversation(store.analysisJobId, selectedDocument.value.id)).data.id
+        conversationByDocument.set(selectedDocument.value.id, conversationId)
+      }
+      await streamReviewAssistant(conversationId, {
         request_id: crypto.randomUUID(), message: normalized, finding_id: props.risk?.id,
         history: messages.value.slice(0, -2).map(({ role, content }) => ({ role, content })),
       }, {
-        onToken: (data) => { answer.content += String(data.content ?? data.token ?? '') },
-        onDone: (data) => { answer.citations = Array.isArray(data.citations) ? data.citations.filter(Boolean) : [] },
-        onError: (data) => { answer.content = data.message || '当前证据不足，无法回答该问题。' },
+        onStatus: (data) => { answer.status = data.type === 'retrieving' ? '正在检索当前文档' : '正在组织回答' },
+        onToken: (data) => { answer.status = ''; answer.content += String(data.content ?? '') },
+        onDone: (data) => {
+          answer.status = ''
+          answer.refused = data.refused
+          answer.citations = Array.isArray(data.citations) ? data.citations.filter(Boolean) : []
+          if (!answer.content) answer.content = data.answer
+        },
+        onError: (data) => { answer.status = ''; answer.error = true; answer.content = data.message || '审查问答服务暂时不可用。' },
       })
       if (!answer.content) answer.content = '当前审查任务没有可引用的证据，无法回答该问题。'
     } catch {
@@ -97,12 +102,16 @@ function clearMessages() {
 <template>
   <section class="review-assistant" aria-labelledby="review-assistant-title">
     <header class="assistant-header">
-      <div>
+      <div class="assistant-heading-copy">
         <span class="assistant-title-row">
           <el-icon aria-hidden="true"><ChatDotRound /></el-icon>
           <strong id="review-assistant-title">条款问答助手</strong>
         </span>
         <span data-test="assistant-context" class="assistant-context">{{ contextLabel }}</span>
+        <select v-model="selectedMembershipId" data-test="assistant-document" aria-label="选择问答文档" :disabled="isStreaming || readyDocuments.length < 2">
+          <option value="" disabled>选择文档</option>
+          <option v-for="document in readyDocuments" :key="document.id" :value="document.id">{{ document.name }}</option>
+        </select>
       </div>
       <el-tooltip content="清空对话" placement="left">
         <button type="button" class="assistant-clear" aria-label="清空问答记录" @click="clearMessages">
@@ -120,9 +129,14 @@ function clearMessages() {
         :data-role="message.role"
       >
         <span class="assistant-message__label">{{ message.role === 'assistant' ? '助手' : '你' }}</span>
-        <p>{{ message.content }}<span v-if="isStreaming && message === messages.at(-1)" class="sr-only">正在生成回答</span></p>
+        <p :data-test="message.refused ? 'assistant-refusal' : undefined" :class="{ 'assistant-message__refusal': message.refused, 'assistant-message__error': message.error }">
+          <span v-if="message.status" class="assistant-status">{{ message.status }}</span>{{ message.content }}<span v-if="isStreaming && message === messages.at(-1)" class="sr-only">正在生成回答</span>
+        </p>
         <div v-if="message.citations?.length" class="assistant-citations" aria-label="回答引用">
-          <button v-for="(citation, index) in message.citations" :key="index" type="button" @click="emit('locate', citation)">定位引用 {{ index + 1 }}</button>
+          <button v-for="citation in message.citations" :key="citation.citation_id" data-test="assistant-citation" type="button" @click="emit('locate', citation)">
+            <span>{{ citation.filename }}{{ citation.locator.page_number ? ` · 第 ${citation.locator.page_number} 页` : '' }}</span>
+            <q>{{ citation.quote }}</q>
+          </button>
         </div>
       </div>
     </div>
@@ -148,7 +162,7 @@ function clearMessages() {
           <button
             data-test="assistant-send"
             type="button"
-            :disabled="!input.trim() || isStreaming"
+          :disabled="!input.trim() || isStreaming || !selectedDocument"
             aria-label="发送问题"
             @click="sendQuestion()"
           >
@@ -181,6 +195,7 @@ function clearMessages() {
   background: var(--surface-low);
 }
 
+.assistant-heading-copy { min-width: 0; flex: 1; }
 .assistant-title-row {
   display: flex;
   align-items: center;
@@ -199,6 +214,17 @@ function clearMessages() {
   margin-top: 6px;
   color: var(--ink-muted);
   font-size: 11px;
+}
+
+.assistant-heading-copy select {
+  width: 100%;
+  min-height: 36px;
+  margin-top: 10px;
+  padding: 0 9px;
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  background: var(--surface);
 }
 
 .assistant-clear {
@@ -339,8 +365,12 @@ function clearMessages() {
   cursor: pointer;
 }
 
-.assistant-citations { display: flex; flex-wrap: wrap; gap: 6px; }
-.assistant-citations button { min-height: 44px; border: 1px solid var(--outline); color: var(--action); background: var(--surface); cursor: pointer; }
+.assistant-status { display: block; color: var(--ink-muted); }
+.assistant-message__refusal { border: 1px solid var(--warning-outline); background: #fff8ed !important; }
+.assistant-message__error { border: 1px solid var(--danger-outline); background: var(--danger-soft) !important; }
+.assistant-citations { display: flex; flex-direction: column; gap: 6px; }
+.assistant-citations button { display: flex; min-height: 44px; flex-direction: column; gap: 3px; padding: 8px 10px; border: 1px solid var(--outline); border-radius: var(--radius-sm); color: var(--action); background: var(--surface); text-align: left; cursor: pointer; }
+.assistant-citations q { max-width: 42ch; color: var(--ink-muted); font-size: 11px; overflow-wrap: anywhere; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }

@@ -183,8 +183,25 @@ export async function downloadExportArtifact(artifactId: string, filename = 'rev
   URL.revokeObjectURL(url)
 }
 
-export function createConversation(analysisJobId: string) {
-  return http.post<{ id: string }>('/review/conversations', { analysis_job_id: analysisJobId })
+export interface ReviewCitation {
+  citation_id: string
+  document_id: string
+  document_version_id: string
+  filename: string
+  block_id: string
+  chunk_id?: number | null
+  section_path?: string[]
+  quote: string
+  quote_start: number
+  quote_end: number
+  locator: Record<string, unknown>
+}
+
+export function createConversation(analysisJobId: string, documentMembershipId: string) {
+  return http.post<{ id: string; document_id: string; document_version_id: string }>('/review/conversations', {
+    analysis_job_id: analysisJobId,
+    document_membership_id: documentMembershipId,
+  })
 }
 
 export function stopConversation(conversationId: string, requestId: string) {
@@ -205,7 +222,13 @@ export async function streamAnalysis(jobId: string, handlers: StreamHandlers, si
 export async function streamReviewAssistant(
   conversationId: string,
   payload: { request_id: string; message: string; finding_id?: string; history: Array<{ role: string; content: string }> },
-  handlers: { onMeta?: (data: any) => void; onStatus?: (data: any) => void; onToken?: (data: any) => void; onDone?: (data: any) => void; onError?: (data: any) => void },
+  handlers: {
+    onMeta?: (data: Record<string, unknown>) => void
+    onStatus?: (data: { request_id: string; type: 'retrieving' | 'generating' }) => void
+    onToken?: (data: { request_id: string; content: string }) => void
+    onDone?: (data: { request_id: string; answer: string; refused: boolean; refusal_code?: string; citations: ReviewCitation[] }) => void
+    onError?: (data: { request_id: string; code: string; message: string; retryable: boolean }) => void
+  },
   signal?: AbortSignal,
 ) {
   const base = import.meta.env.VITE_API_BASE || '/api'
@@ -216,12 +239,14 @@ export async function streamReviewAssistant(
     signal,
   })
   if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`)
+  let terminal = false
   await consumeSse(response.body, (event, data) => {
+    if (terminal) return
     if (event === 'meta') handlers.onMeta?.(data)
     else if (event === 'status') handlers.onStatus?.(data)
     else if (event === 'token') handlers.onToken?.(data)
-    else if (event === 'done') handlers.onDone?.(data)
-    else if (event === 'error') handlers.onError?.(data)
+    else if (event === 'done') { terminal = true; handlers.onDone?.(data) }
+    else if (event === 'error') { terminal = true; handlers.onError?.(data) }
   })
 }
 

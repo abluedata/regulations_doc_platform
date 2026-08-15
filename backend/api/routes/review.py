@@ -332,8 +332,21 @@ def download_export_artifact(artifact_id: str):
 
 @router.post("/conversations", status_code=201)
 def create_conversation(body: CreateConversationRequest):
-    _require("jobs", body.analysis_job_id)
-    return _store.create_conversation(body.analysis_job_id)
+    job = _require("jobs", body.analysis_job_id)
+    try:
+        membership = _store.batch_document(str(job["batch_id"]), body.document_membership_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=409, detail="document_scope_mismatch") from exc
+    in_job_scope = any(
+        item.get("document_id") == membership.get("document_id")
+        and item.get("document_version_id") == membership.get("document_version_id")
+        for item in job.get("documents", [])
+    )
+    if not in_job_scope:
+        raise HTTPException(status_code=409, detail="document_scope_mismatch")
+    if membership.get("status") != "ready":
+        raise HTTPException(status_code=409, detail="document_not_ready")
+    return _store.create_conversation(body.analysis_job_id, membership)
 
 
 @router.get("/conversations/{conversation_id}")
@@ -350,7 +363,11 @@ def clear_conversation(conversation_id: str):
 @router.post("/conversations/{conversation_id}/stream")
 def stream_review_answer(conversation_id: str, body: ReviewStreamRequest):
     _require("conversations", conversation_id)
-    return StreamingResponse(iter(_assistant.stream_answer(conversation_id, body.model_dump())), media_type="text/event-stream")
+    return StreamingResponse(
+        iter(_assistant.stream_answer(conversation_id, body.model_dump())),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/conversations/{conversation_id}/stop", status_code=202)

@@ -95,6 +95,7 @@ class OverallDecisionWrite(BaseModel):
 
 class CreateConversationRequest(BaseModel):
     analysis_job_id: str
+    document_membership_id: str
 
 
 class ReviewStreamRequest(BaseModel):

@@ -323,10 +323,15 @@ class ReviewStore:
 
     # Conversations/exports/HITL -----------------------------------------
 
-    def create_conversation(self, analysis_job_id: str) -> dict[str, Any]:
+    def create_conversation(self, analysis_job_id: str, membership: Mapping[str, Any]) -> dict[str, Any]:
         return self.put(
             "conversations",
-            {"id": str(uuid4()), "analysis_job_id": analysis_job_id, "revision": 0, "messages": []},
+            {
+                "id": str(uuid4()), "analysis_job_id": analysis_job_id,
+                "document_membership_id": membership["id"], "document_id": membership["document_id"],
+                "document_version_id": membership["document_version_id"], "filename": membership.get("filename", ""),
+                "revision": 0, "messages": [],
+            },
         )
 
     def save_conversation(self, conversation: Mapping[str, Any]) -> dict[str, Any]:

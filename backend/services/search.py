@@ -9,6 +9,8 @@
 """
 import json
 import logging
+from dataclasses import dataclass
+from typing import Any
 import threading
 
 import httpx
@@ -46,6 +48,16 @@ from elasticsearch import Elasticsearch
 from core.http_client import elasticsearch_client, httpx_client, requests_session
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class DocumentScope:
+    document_id: str
+    document_version_id: str
+
+    def __post_init__(self) -> None:
+        if not self.document_id or not self.document_version_id:
+            raise ValueError("document scope is required")
 _visibility_v2_lock = threading.Lock()
 _visibility_v2_ready = False
 
@@ -374,6 +386,62 @@ def search_local(query: str, k: int = None) -> list[dict]:
             "section_path": src.get("section_path") or "",
         })
     return results
+
+
+def search_document(query: str, *, scope: DocumentScope, k: int = 6) -> list[dict[str, Any]]:
+    """Run hybrid retrieval inside one immutable document version."""
+    es = get_es()
+    visibility_key = f"{scope.document_id}:{scope.document_version_id}"
+    scope_filter = {"term": {"visibility_key_v2": visibility_key}}
+    try:
+        q_emb = get_embeddings([query])[0]
+    except Exception as exc:
+        _safe_log(f"Document QA embedding failed: {exc}", logging.WARNING)
+        q_emb = None
+
+    bm25_body = {
+        "query": {"bool": {
+            "must": [{"multi_match": {"query": query, "fields": ["title^3", "content"], "type": "best_fields"}}],
+            "filter": [scope_filter],
+        }},
+        "size": k * 2,
+        "_source": {"excludes": ["embedding"]},
+    }
+    bm25_hits = es.search(index=INDEX_NAME, body=bm25_body)["hits"]["hits"]
+    vector_hits: list[dict[str, Any]] = []
+    if q_emb:
+        knn_body = {
+            "knn": {
+                "field": "embedding", "query_vector": q_emb, "k": k,
+                "num_candidates": HYBRID_NUM_CANDIDATES, "filter": scope_filter,
+            },
+            "size": k * 2,
+            "_source": {"excludes": ["embedding"]},
+        }
+        vector_hits = es.search(index=INDEX_NAME, body=knn_body)["hits"]["hits"]
+
+    ranked: dict[str, dict[str, Any]] = {}
+    for hits in (bm25_hits, vector_hits):
+        for rank, hit in enumerate(hits):
+            src = hit.get("_source", {})
+            if src.get("doc_id") != scope.document_id or src.get("document_version_id") != scope.document_version_id:
+                continue
+            key = str(src.get("chunk_id", -1))
+            ranked.setdefault(key, {"doc": src, "score": 0.0})
+            ranked[key]["score"] += 1.0 / (RRF_RANK_CONSTANT + rank + 1)
+
+    output = []
+    for item in sorted(ranked.values(), key=lambda value: value["score"], reverse=True)[:k]:
+        src = item["doc"]
+        output.append({
+            "title": src.get("title", ""), "content": src.get("content", ""),
+            "doc_id": src.get("doc_id", ""), "document_version_id": src.get("document_version_id", ""),
+            "chunk_id": src.get("chunk_id", -1), "block_id": src.get("block_id"),
+            "filename": src.get("filename", ""), "score": item["score"], "source": "local",
+            "block_type": src.get("block_type"), "section_path": src.get("section_path") or "",
+            "page_start": src.get("page_start"), "page_end": src.get("page_end"), "locator": src.get("locator"),
+        })
+    return output
 
 
 # ─── 主搜索入口（带路由） ─────────────────────────────────

@@ -1,0 +1,561 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-15T09:55:12.214442+00:00",
+  "gold_dataset_sha256": "dbef3f2a57f8cb5a4c29a92d0ade7c3fccbb74b306ec49f18106cd050dcd64a4",
+  "rule_coverage": {
+    "enabled_rule_executions": 240,
+    "executed_rule_executions": 0,
+    "coverage": 0.0,
+    "status": "complete_degraded",
+    "per_document": [
+      {
+        "doc_id": "termination-agreement-001",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-002",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-003",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-004",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-005",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-006",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-007",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-008",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-009",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-010",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-011",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-012",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-013",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-014",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-015",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-016",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-017",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-018",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-019",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-020",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-021",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-022",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-023",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-024",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-025",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-026",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-027",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-028",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-029",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      },
+      {
+        "doc_id": "termination-agreement-030",
+        "doc_type": "termination_agreement",
+        "enabled_rules": 8,
+        "executed_rules": 0,
+        "missing_rules": [
+          "confidentiality_overbroad",
+          "evidence_missing",
+          "non_compete_overbroad",
+          "notice_or_pay_missing",
+          "payment_deadline_missing",
+          "release_scope_overbroad",
+          "severance_underpayment",
+          "social_insurance_unsettled"
+        ],
+        "coverage": 0.0,
+        "status": "complete_degraded"
+      }
+    ]
+  },
+  "refusal": {
+    "gold_no_answer_questions": 30,
+    "correct_refusals": 0,
+    "missed_refusals": 30,
+    "false_refusals": 0,
+    "refusal_accuracy": 0.0,
+    "answerability_accuracy": 0.5
+  }
+}

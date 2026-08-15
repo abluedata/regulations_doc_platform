@@ -1,32 +1,67 @@
 import { mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
-import { describe, expect, it } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ReviewAssistant from './ReviewAssistant.vue'
-import type { ReviewRisk } from '@/types'
+import { useReviewStore } from '@/stores/review'
 
-const risk: ReviewRisk = {
-  id: 'unlimited-liability',
-  level: 'high',
-  section: '第 3.1 节',
-  title: '无限制责任',
-  description: '该条款取消了间接损害的责任限制。',
-  currentText: '总责任上限为 5,000,000 美元。',
-  referenceText: '责任上限应为年度合同价值的 1 倍。',
-}
+const { createConversation, streamReviewAssistant } = vi.hoisted(() => ({
+  createConversation: vi.fn(),
+  streamReviewAssistant: vi.fn(),
+}))
+
+vi.mock('@/api/review', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/api/review')>(),
+  createConversation,
+  streamReviewAssistant,
+}))
 
 describe('ReviewAssistant', () => {
-  it('answers a local question with the selected risk context', async () => {
-    const wrapper = mount(ReviewAssistant, { props: { risk }, global: { plugins: [ElementPlus] } })
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    createConversation.mockReset().mockResolvedValue({ data: { id: 'conv-1' } })
+    streamReviewAssistant.mockReset()
+  })
 
-    expect(wrapper.get('[data-test="assistant-context"]').text()).toContain('无限制责任')
-    await wrapper.get('[data-test="assistant-input"]').setValue('这项风险为什么重要？')
-    const sendButton = wrapper.get('[data-test="assistant-send"]')
-    expect(sendButton.attributes('disabled')).toBeUndefined()
-    await sendButton.trigger('click')
+  it('binds the conversation to the selected document membership', async () => {
+    const store = useReviewStore()
+    store.analysisJobId = 'job-1'
+    store.files = [{
+      id: 'membership-1', name: '合同.pdf', size: '1 KB', progress: 100, status: 'ready',
+      documentId: 'doc-1', documentVersionId: 'v1',
+    }]
+    streamReviewAssistant.mockImplementation(async (_id, _payload, handlers) => {
+      handlers.onToken?.({ content: '付款期限为三十日。' })
+      handlers.onDone?.({ refused: false, citations: [{
+        citation_id: 'c1', filename: '合同.pdf', document_id: 'doc-1', document_version_id: 'v1',
+        block_id: 'b1', quote: '三十日内付款', quote_start: 0, quote_end: 7,
+        locator: { kind: 'pdf', page_number: 2 },
+      }] })
+    })
+    const wrapper = mount(ReviewAssistant, { global: { plugins: [ElementPlus] } })
 
-    const userMessages = wrapper.findAll('[data-role="user"]')
-    const assistantMessages = wrapper.findAll('[data-role="assistant"]')
-    expect(userMessages.at(-1)?.text()).toContain('这项风险为什么重要？')
-    expect(assistantMessages.at(-1)?.text()).toContain('无限制责任')
+    await wrapper.get('[data-test="assistant-input"]').setValue('付款期限？')
+    await wrapper.get('[data-test="assistant-send"]').trigger('click')
+
+    expect(createConversation).toHaveBeenCalledWith('job-1', 'membership-1')
+    expect(wrapper.text()).toContain('付款期限为三十日')
+    expect(wrapper.text()).toContain('三十日内付款')
+    await wrapper.get('[data-test="assistant-citation"]').trigger('click')
+    expect(wrapper.emitted('locate')?.[0]?.[0]).toMatchObject({ document_version_id: 'v1' })
+  })
+
+  it('renders a grounded refusal without citations', async () => {
+    const store = useReviewStore()
+    store.analysisJobId = 'job-1'
+    store.files = [{ id: 'membership-1', name: '合同.pdf', size: '1 KB', progress: 100, status: 'ready' }]
+    streamReviewAssistant.mockImplementation(async (_id, _payload, handlers) => {
+      handlers.onToken?.({ content: '当前文档未提供足够依据，无法可靠回答该问题。' })
+      handlers.onDone?.({ refused: true, refusal_code: 'no_evidence', citations: [] })
+    })
+    const wrapper = mount(ReviewAssistant, { global: { plugins: [ElementPlus] } })
+    await wrapper.get('[data-test="assistant-input"]').setValue('外部收入？')
+    await wrapper.get('[data-test="assistant-send"]').trigger('click')
+    expect(wrapper.get('[data-test="assistant-refusal"]').text()).toContain('未提供足够依据')
+    expect(wrapper.find('[data-test="assistant-citation"]').exists()).toBe(false)
   })
 })

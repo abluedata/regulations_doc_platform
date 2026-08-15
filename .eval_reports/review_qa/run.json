@@ -1,0 +1,657 @@
+{
+  "schema_version": 1,
+  "run_kind": "deterministic_contract_fixture",
+  "gold_dataset_sha256": "5b416cb02bb53ac781a749e8a8b147f523349d22d7c79702be9927de09de6d04",
+  "answers": [
+    {
+      "question_id": "qa-001",
+      "answer": "根据当前文档，解除劳动合同。",
+      "refused": false,
+      "citations": [
+        {
+          "document_id": "termination-agreement-001",
+          "document_version_id": "gold-v1",
+          "block_id": "b1",
+          "quote": "解除劳动合同",
+          "quote_start": 6,
+          "quote_end": 12,
+          "locator": {
+            "kind": "pdf",
+            "page_number": 1,
+            "precision": "page",
+            "rects": []
+          }
+        }
+      ],
+      "events": [
+        "meta",
+        "status",
+        "token",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-002",
+      "answer": "根据当前文档，未列明。",
+      "refused": false,
+      "citations": [
+        {
+          "document_id": "termination-agreement-002",
+          "document_version_id": "gold-v1",
+          "block_id": "b1",
+          "quote": "未列明",
+          "quote_start": 12,
+          "quote_end": 15,
+          "locator": {
+            "kind": "pdf",
+            "page_number": 1,
+            "precision": "page",
+            "rects": []
+          }
+        }
+      ],
+      "events": [
+        "meta",
+        "status",
+        "token",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-003",
+      "answer": "根据当前文档，签署后。",
+      "refused": false,
+      "citations": [
+        {
+          "document_id": "termination-agreement-003",
+          "document_version_id": "gold-v1",
+          "block_id": "b1",
+          "quote": "签署后",
+          "quote_start": 7,
+          "quote_end": 10,
+          "locator": {
+            "kind": "pdf",
+            "page_number": 2,
+            "precision": "page",
+            "rects": []
+          }
+        }
+      ],
+      "events": [
+        "meta",
+        "status",
+        "token",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-004",
+      "answer": "根据当前文档，三十日。",
+      "refused": false,
+      "citations": [
+        {
+          "document_id": "termination-agreement-004",
+          "document_version_id": "gold-v1",
+          "block_id": "b2",
+          "quote": "三十日",
+          "quote_start": 9,
+          "quote_end": 12,
+          "locator": {
+            "kind": "pdf",
+            "page_number": 2,
+            "precision": "page",
+            "rects": []
+          }
+        }
+      ],
+      "events": [
+        "meta",
+        "status",
+        "token",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-005",
+      "answer": "根据当前文档，甲方。",
+      "refused": false,
+      "citations": [
+        {
+          "document_id": "termination-agreement-005",
+          "document_version_id": "gold-v1",
+          "block_id": "b2",
+          "quote": "甲方",
+          "quote_start": 0,
+          "quote_end": 2,
+          "locator": {
+            "kind": "pdf",
+            "page_number": 2,
+            "precision": "page",
+            "rects": []
+          }
+        }
+      ],
+      "events": [
+        "meta",
+        "status",
+        "token",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-006",
+      "answer": "根据当前文档，八月。",
+      "refused": false,
+      "citations": [
+        {
+          "document_id": "termination-agreement-006",
+          "document_version_id": "gold-v1",
+          "block_id": "b3",
+          "quote": "八月",
+          "quote_start": 15,
+          "quote_end": 17,
+          "locator": {
+            "kind": "pdf",
+            "page_number": 3,
+            "precision": "page",
+            "rects": []
+          }
+        }
+      ],
+      "events": [
+        "meta",
+        "status",
+        "token",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-007",
+      "answer": "根据当前文档，两年。",
+      "refused": false,
+      "citations": [
+        {
+          "document_id": "termination-agreement-007",
+          "document_version_id": "gold-v1",
+          "block_id": "b3",
+          "quote": "两年",
+          "quote_start": 15,
+          "quote_end": 17,
+          "locator": {
+            "kind": "pdf",
+            "page_number": 3,
+            "precision": "page",
+            "rects": []
+          }
+        }
+      ],
+      "events": [
+        "meta",
+        "status",
+        "token",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-008",
+      "answer": "根据当前文档，劳动仲裁委员会。",
+      "refused": false,
+      "citations": [
+        {
+          "document_id": "termination-agreement-008",
+          "document_version_id": "gold-v1",
+          "block_id": "b4",
+          "quote": "劳动仲裁委员会",
+          "quote_start": 9,
+          "quote_end": 16,
+          "locator": {
+            "kind": "pdf",
+            "page_number": 4,
+            "precision": "page",
+            "rects": []
+          }
+        }
+      ],
+      "events": [
+        "meta",
+        "status",
+        "token",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-009",
+      "answer": "根据当前文档，签字盖章。",
+      "refused": false,
+      "citations": [
+        {
+          "document_id": "termination-agreement-009",
+          "document_version_id": "gold-v1",
+          "block_id": "b4",
+          "quote": "签字盖章",
+          "quote_start": 6,
+          "quote_end": 10,
+          "locator": {
+            "kind": "pdf",
+            "page_number": 4,
+            "precision": "page",
+            "rects": []
+          }
+        }
+      ],
+      "events": [
+        "meta",
+        "status",
+        "token",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-010",
+      "answer": "根据当前文档，两份。",
+      "refused": false,
+      "citations": [
+        {
+          "document_id": "termination-agreement-010",
+          "document_version_id": "gold-v1",
+          "block_id": "b5",
+          "quote": "两份",
+          "quote_start": 5,
+          "quote_end": 7,
+          "locator": {
+            "kind": "pdf",
+            "page_number": 5,
+            "precision": "page",
+            "rects": []
+          }
+        }
+      ],
+      "events": [
+        "meta",
+        "status",
+        "token",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-011",
+      "answer": "根据当前文档，五万元。",
+      "refused": false,
+      "citations": [
+        {
+          "document_id": "termination-agreement-011",
+          "document_version_id": "gold-v1",
+          "block_id": "b1",
+          "quote": "五万元",
+          "quote_start": 14,
+          "quote_end": 17,
+          "locator": {
+            "kind": "docx",
+            "locator_id": "p-1",
+            "block_id": "b1",
+            "precision": "exact"
+          }
+        }
+      ],
+      "events": [
+        "meta",
+        "status",
+        "token",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-012",
+      "answer": "根据当前文档，八月十五日。",
+      "refused": false,
+      "citations": [
+        {
+          "document_id": "termination-agreement-012",
+          "document_version_id": "gold-v1",
+          "block_id": "b2",
+          "quote": "八月十五日",
+          "quote_start": 10,
+          "quote_end": 15,
+          "locator": {
+            "kind": "docx",
+            "locator_id": "p-2",
+            "block_id": "b2",
+            "precision": "exact"
+          }
+        }
+      ],
+      "events": [
+        "meta",
+        "status",
+        "token",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-013",
+      "answer": "根据当前文档，三个工作日。",
+      "refused": false,
+      "citations": [
+        {
+          "document_id": "termination-agreement-013",
+          "document_version_id": "gold-v1",
+          "block_id": "b3",
+          "quote": "三个工作日",
+          "quote_start": 4,
+          "quote_end": 9,
+          "locator": {
+            "kind": "docx",
+            "locator_id": "p-3",
+            "block_id": "b3",
+            "precision": "exact"
+          }
+        }
+      ],
+      "events": [
+        "meta",
+        "status",
+        "token",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-014",
+      "answer": "根据当前文档，十二个月。",
+      "refused": false,
+      "citations": [
+        {
+          "document_id": "termination-agreement-014",
+          "document_version_id": "gold-v1",
+          "block_id": "b4",
+          "quote": "十二个月",
+          "quote_start": 7,
+          "quote_end": 11,
+          "locator": {
+            "kind": "docx",
+            "locator_id": "p-4",
+            "block_id": "b4",
+            "precision": "exact"
+          }
+        }
+      ],
+      "events": [
+        "meta",
+        "status",
+        "token",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-015",
+      "answer": "根据当前文档，三千元。",
+      "refused": false,
+      "citations": [
+        {
+          "document_id": "termination-agreement-015",
+          "document_version_id": "gold-v1",
+          "block_id": "b5",
+          "quote": "三千元",
+          "quote_start": 10,
+          "quote_end": 13,
+          "locator": {
+            "kind": "docx",
+            "locator_id": "p-5",
+            "block_id": "b5",
+            "precision": "exact"
+          }
+        }
+      ],
+      "events": [
+        "meta",
+        "status",
+        "token",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-016",
+      "answer": "根据当前文档，折算工资。",
+      "refused": false,
+      "citations": [
+        {
+          "document_id": "termination-agreement-016",
+          "document_version_id": "gold-v1",
+          "block_id": "b6",
+          "quote": "折算工资",
+          "quote_start": 9,
+          "quote_end": 13,
+          "locator": {
+            "kind": "docx",
+            "locator_id": "p-6",
+            "block_id": "b6",
+            "precision": "exact"
+          }
+        }
+      ],
+      "events": [
+        "meta",
+        "status",
+        "token",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-017",
+      "answer": "根据当前文档，甲方。",
+      "refused": false,
+      "citations": [
+        {
+          "document_id": "termination-agreement-017",
+          "document_version_id": "gold-v1",
+          "block_id": "b7",
+          "quote": "甲方",
+          "quote_start": 10,
+          "quote_end": 12,
+          "locator": {
+            "kind": "docx",
+            "locator_id": "p-7",
+            "block_id": "b7",
+            "precision": "exact"
+          }
+        }
+      ],
+      "events": [
+        "meta",
+        "status",
+        "token",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-018",
+      "answer": "根据当前文档，有效通知。",
+      "refused": false,
+      "citations": [
+        {
+          "document_id": "termination-agreement-018",
+          "document_version_id": "gold-v1",
+          "block_id": "b8",
+          "quote": "有效通知",
+          "quote_start": 14,
+          "quote_end": 18,
+          "locator": {
+            "kind": "docx",
+            "locator_id": "p-8",
+            "block_id": "b8",
+            "precision": "exact"
+          }
+        }
+      ],
+      "events": [
+        "meta",
+        "status",
+        "token",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-019",
+      "answer": "根据当前文档，同等法律效力。",
+      "refused": false,
+      "citations": [
+        {
+          "document_id": "termination-agreement-019",
+          "document_version_id": "gold-v1",
+          "block_id": "b9",
+          "quote": "同等法律效力",
+          "quote_start": 8,
+          "quote_end": 14,
+          "locator": {
+            "kind": "docx",
+            "locator_id": "p-9",
+            "block_id": "b9",
+            "precision": "exact"
+          }
+        }
+      ],
+      "events": [
+        "meta",
+        "status",
+        "token",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-020",
+      "answer": "根据当前文档，双方确认。",
+      "refused": false,
+      "citations": [
+        {
+          "document_id": "termination-agreement-020",
+          "document_version_id": "gold-v1",
+          "block_id": "b10",
+          "quote": "双方确认",
+          "quote_start": 7,
+          "quote_end": 11,
+          "locator": {
+            "kind": "docx",
+            "locator_id": "p-10",
+            "block_id": "b10",
+            "precision": "exact"
+          }
+        }
+      ],
+      "events": [
+        "meta",
+        "status",
+        "token",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-021",
+      "answer": "当前文档未提供足够依据，无法可靠回答该问题。",
+      "refused": true,
+      "citations": [],
+      "events": [
+        "meta",
+        "status",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-022",
+      "answer": "当前文档未提供足够依据，无法可靠回答该问题。",
+      "refused": true,
+      "citations": [],
+      "events": [
+        "meta",
+        "status",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-023",
+      "answer": "当前文档未提供足够依据，无法可靠回答该问题。",
+      "refused": true,
+      "citations": [],
+      "events": [
+        "meta",
+        "status",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-024",
+      "answer": "当前文档未提供足够依据，无法可靠回答该问题。",
+      "refused": true,
+      "citations": [],
+      "events": [
+        "meta",
+        "status",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-025",
+      "answer": "当前文档未提供足够依据，无法可靠回答该问题。",
+      "refused": true,
+      "citations": [],
+      "events": [
+        "meta",
+        "status",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-026",
+      "answer": "当前文档未提供足够依据，无法可靠回答该问题。",
+      "refused": true,
+      "citations": [],
+      "events": [
+        "meta",
+        "status",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-027",
+      "answer": "当前文档未提供足够依据，无法可靠回答该问题。",
+      "refused": true,
+      "citations": [],
+      "events": [
+        "meta",
+        "status",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-028",
+      "answer": "当前文档未提供足够依据，无法可靠回答该问题。",
+      "refused": true,
+      "citations": [],
+      "events": [
+        "meta",
+        "status",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-029",
+      "answer": "当前文档未提供足够依据，无法可靠回答该问题。",
+      "refused": true,
+      "citations": [],
+      "events": [
+        "meta",
+        "status",
+        "done"
+      ]
+    },
+    {
+      "question_id": "qa-030",
+      "answer": "当前文档未提供足够依据，无法可靠回答该问题。",
+      "refused": true,
+      "citations": [],
+      "events": [
+        "meta",
+        "status",
+        "done"
+      ]
+    }
+  ]
+}

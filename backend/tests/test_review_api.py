@@ -216,8 +216,15 @@ class ReviewApiContractTests(unittest.TestCase):
         self.assertGreaterEqual(audit["total"], 4)
         self.assertIn("analysis.completed", {item["event_type"] for item in audit["items"]})
 
-        conversation = self.client.post("/review/conversations", json={"analysis_job_id": job_item["id"]})
+        legacy_conversation = self.client.post("/review/conversations", json={"analysis_job_id": job_item["id"]})
+        self.assertEqual(legacy_conversation.status_code, 422)
+        conversation = self.client.post(
+            "/review/conversations",
+            json={"analysis_job_id": job_item["id"], "document_membership_id": membership_id},
+        )
         self.assertEqual(conversation.status_code, 201, conversation.text)
+        self.assertEqual(conversation.json()["document_id"], "doc-1")
+        self.assertEqual(conversation.json()["document_version_id"], "ver-1")
         conv_id = conversation.json()["id"]
         answer = self.client.post(
             f"/review/conversations/{conv_id}/stream",
@@ -225,8 +232,10 @@ class ReviewApiContractTests(unittest.TestCase):
         )
         self.assertEqual(answer.status_code, 200)
         self.assertIn("event: meta", answer.text)
-        self.assertEqual(answer.text.count("event: done"), 1)
-        self.assertNotIn("event: error", answer.text)
+        self.assertEqual(answer.text.count("event: error"), 1)
+        self.assertNotIn("event: done", answer.text)
+        self.assertEqual(answer.headers["cache-control"], "no-cache")
+        self.assertEqual(answer.headers["x-accel-buffering"], "no")
         stop = self.client.post(
             f"/review/conversations/{conv_id}/stop",
             json={"request_id": "00000000-0000-0000-0000-000000000001"},

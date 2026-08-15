@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-15T09:55:12.204923+00:00",
+  "gold_dataset_sha256": "dbef3f2a57f8cb5a4c29a92d0ade7c3fccbb74b306ec49f18106cd050dcd64a4",
+  "calibration": [
+    {
+      "bucket": "missing",
+      "lower": null,
+      "upper": null,
+      "predictions": 52,
+      "true_positive": 23,
+      "false_positive": 29,
+      "actual_precision": 0.4423076923076923
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+# Orca workspace hooks — regulations_doc_platform
+# 打开/创建本仓库 worktree 时自动运行一键启动脚本 start.ps1
+# （Windows 下默认以 cmd 执行；start.ps1 幂等：已运行的服务会自动跳过）
+scripts:
+  setup: powershell.exe -NoProfile -ExecutionPolicy Bypass -File start.ps1

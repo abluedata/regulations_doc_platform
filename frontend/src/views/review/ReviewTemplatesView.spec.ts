@@ -66,9 +66,25 @@ describe('ReviewTemplatesView', () => {
     expect(useReviewStore().selectedTemplateId).toBe('tpl-2')
   })
 
-  it('creates a custom template through the backend', async () => {
-    vi.mocked(reviewApi.createTemplate).mockResolvedValue({
-      data: { id: 'tpl-new', name: '招标采购评审范本', category: '交易类', description: 'x', rule_version_ids: [], status: 'draft' },
+  it('does not offer custom template creation', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/review/templates', name: 'review-templates', component: ReviewTemplatesView }],
+    })
+    await router.push('/review/templates')
+    await router.isReady()
+
+    const wrapper = mount(ReviewTemplatesView, { global: { plugins: [router, ElementPlus] } })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(wrapper.find('.custom-template').exists()).toBe(false)
+    expect(wrapper.find('.el-dialog').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('创建自定义范本')
+  })
+
+  it('shows a neutral empty state when no templates are available', async () => {
+    vi.mocked(reviewApi.listTemplates).mockResolvedValue({
+      data: { items: [], total: 0, page: 1, page_size: 50 },
     } as never)
 
     const router = createRouter({
@@ -81,13 +97,7 @@ describe('ReviewTemplatesView', () => {
     const wrapper = mount(ReviewTemplatesView, { global: { plugins: [router, ElementPlus] } })
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    await wrapper.find('.custom-template').trigger('click')
-    expect(wrapper.find('.el-dialog').exists()).toBe(true)
-
-    wrapper.find('input[type="text"]').setValue('招标采购评审范本')
-    await wrapper.find('.create-form').trigger('submit')
-    await new Promise((resolve) => setTimeout(resolve, 0))
-
-    expect(reviewApi.createTemplate).toHaveBeenCalledWith(expect.objectContaining({ name: '招标采购评审范本' }))
+    expect(wrapper.find('.empty-state').text()).toBe('暂无可用范本')
+    expect(wrapper.find('.custom-template').exists()).toBe(false)
   })
 })

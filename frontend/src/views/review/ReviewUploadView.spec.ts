@@ -52,6 +52,7 @@ describe('ReviewUploadView', () => {
     const wrapper = mount(ReviewUploadView, { global: { plugins: [router, ElementPlus] } })
 
     expect(wrapper.get('h1').text()).toBe('上传文档')
+    expect(wrapper.text()).not.toContain('从云端导入')
     expect(wrapper.findAll('[data-file-id]')).toHaveLength(0)
     expect(wrapper.get('[data-test="review-next"]')).toBeTruthy()
 

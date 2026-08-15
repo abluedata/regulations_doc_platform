@@ -110,10 +110,6 @@ async function goPrevious() {
         <h1>上传文档</h1>
         <p>添加您希望在此批次中分析的法律文档。</p>
       </div>
-      <el-button plain @click="browseFiles">
-        <el-icon aria-hidden="true"><DocumentCopy /></el-icon>
-        从云端导入
-      </el-button>
     </header>
 
     <div class="upload-layout">
@@ -733,10 +729,6 @@ async function goPrevious() {
   .page-heading {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .page-heading .el-button {
-    align-self: flex-start;
   }
 
   .drop-zone {

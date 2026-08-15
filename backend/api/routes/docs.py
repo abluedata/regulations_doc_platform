@@ -1,10 +1,12 @@
 """知识库文档：上传 / 列表 / 详情 / 预览 / 删除 / 重析。"""
 from __future__ import annotations
 
+import mimetypes
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
 
 from api.schemas import (
     DocDetailResponse,
@@ -25,6 +27,7 @@ from services.document_store import (
     load_meta,
     load_preview_md,
     mark_deletion_complete,
+    original_file,
     safe_filename,
 )
 
@@ -95,6 +98,28 @@ def api_get_doc(doc_id: str):
     if not meta:
         raise HTTPException(status_code=404, detail="文档不存在")
     return DocDetailResponse(item=meta)
+
+
+@router.get("/{doc_id}/file")
+def api_download_file(doc_id: str):
+    """原始文件下载（inline，支持 Range，前端 pdfjs 直接渲染）。"""
+    meta = load_meta(doc_id)
+    if not meta:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    src = original_file(doc_id)
+    if not src or not src.exists():
+        raise HTTPException(status_code=404, detail="原始文件不存在")
+    media_type = (
+        meta.get("mime")
+        or mimetypes.guess_type(str(src))[0]
+        or "application/octet-stream"
+    )
+    return FileResponse(
+        src,
+        media_type=media_type,
+        filename=meta.get("filename") or src.name,
+        content_disposition_type="inline",
+    )
 
 
 @router.get("/{doc_id}/preview", response_model=DocPreviewResponse)

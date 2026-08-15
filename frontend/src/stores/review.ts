@@ -1,10 +1,41 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import * as reviewApi from '@/api/review'
-import { uploadDoc } from '@/api/docs'
-import type { ReviewClause, ReviewFile, ReviewRisk, ReviewTemplate, ReviewAnalysisStatus } from '@/types'
+import { getDoc, uploadDoc } from '@/api/docs'
+import type { ReviewClause, ReviewFile, ReviewFileStatus, ReviewRisk, ReviewTemplate, ReviewAnalysisStatus } from '@/types'
 
 type LoadState = 'idle' | 'loading' | 'ready' | 'empty' | 'error'
+
+const POLL_INTERVAL_MS = 3000
+const RESTORE_WINDOW_MS = 24 * 60 * 60 * 1000
+
+/** 后端文档状态 → 前端展示进度（百分比） */
+const STATUS_PROGRESS: Record<string, number> = {
+  uploading: 0,
+  uploaded: 65,
+  queued: 65,
+  parsing: 70,
+  normalizing: 70,
+  needs_ocr: 70,
+  chunking: 80,
+  indexing: 90,
+  ready: 100,
+  failed: 0,
+}
+
+/** 后端文档状态 → ReviewFile 状态 */
+const STATUS_TO_FILE: Record<string, ReviewFileStatus> = {
+  uploading: 'uploading',
+  uploaded: 'queued',
+  queued: 'queued',
+  parsing: 'parsing',
+  normalizing: 'parsing',
+  needs_ocr: 'parsing',
+  chunking: 'chunking',
+  indexing: 'indexing',
+  ready: 'ready',
+  failed: 'failed',
+}
 
 export const useReviewStore = defineStore('review', () => {
   const currentStep = ref(1)
@@ -25,7 +56,11 @@ export const useReviewStore = defineStore('review', () => {
   const error = ref('')
   const partialFailure = ref(false)
   const activeFindingId = ref<string | null>(null)
+  const restoring = ref(false)
+  let restoreAttempted = false
   let streamAbort: AbortController | null = null
+  const pollTimers = new Map<string, ReturnType<typeof setInterval>>()
+  const pollBusy = new Set<string>()
 
   const readyCount = computed(() => files.value.filter((file) => file.status === 'ready').length)
   const enabledClauses = computed(() => clauses.value.filter((clause) => clause.enabled))
@@ -119,8 +154,9 @@ export const useReviewStore = defineStore('review', () => {
   async function uploadAndAddFiles(fileList: File[], batchName: string, documentType: string, ocrRequired: boolean) {
     const id = await ensureBatch(batchName, documentType, ocrRequired)
     for (const file of fileList) {
-      const local: ReviewFile = { id: `upload-${crypto.randomUUID()}`, name: file.name, size: formatSize(file.size), progress: 0, status: 'uploading' }
-      files.value.push(local)
+      files.value.push({ id: `upload-${crypto.randomUUID()}`, name: file.name, size: formatSize(file.size), progress: 0, status: 'uploading' })
+      // 后续所有变更都通过响应式代理进行，保证模板能感知进度/状态变化
+      const local = files.value[files.value.length - 1]!
       try {
         const upload = await uploadDoc(file, (progress) => { local.progress = progress })
         const membership = await reviewApi.addBatchDocument(id, {
@@ -132,8 +168,20 @@ export const useReviewStore = defineStore('review', () => {
         local.id = membership.data.id
         local.documentId = upload.data.id
         local.documentVersionId = upload.data.id
-        local.status = membership.data.status === 'ready' ? 'ready' : 'queued'
-        local.progress = local.status === 'ready' ? 100 : 65
+        local.stageLabel = upload.data.stage_label || ''
+        if (upload.data.status === 'ready') {
+          local.status = 'ready'
+          local.progress = 100
+        } else if (upload.data.status === 'failed') {
+          local.status = 'failed'
+          local.progress = 0
+          local.error = upload.data.message || '文档处理失败'
+        } else {
+          local.status = 'queued'
+          local.progress = STATUS_PROGRESS.queued
+          // 上传 XHR 结束后后端仍在 parsing/chunking/indexing：轮询真实状态
+          startPolling(local)
+        }
       } catch (err) {
         local.status = 'failed'
         local.error = toMessage(err)
@@ -141,10 +189,100 @@ export const useReviewStore = defineStore('review', () => {
     }
   }
 
+  /** 把后端文档详情映射到 ReviewFile；返回是否进入终态（ready/failed） */
+  function applyDocStatus(file: ReviewFile, doc: { status?: string; stage_label?: string; error?: string | null; file_size?: number | null }) {
+    const raw = doc.status || 'queued'
+    const mapped = STATUS_TO_FILE[raw] || 'parsing'
+    file.status = mapped
+    file.progress = STATUS_PROGRESS[raw] ?? file.progress
+    file.stageLabel = doc.stage_label || ''
+    if (typeof doc.file_size === 'number' && doc.file_size > 0) file.size = formatSize(doc.file_size)
+    if (mapped === 'failed') {
+      file.progress = 0
+      file.error = doc.error || '文档处理失败'
+    } else if (mapped === 'ready') {
+      file.error = undefined
+    }
+    return mapped === 'ready' || mapped === 'failed'
+  }
+
+  async function pollDocOnce(file: ReviewFile) {
+    const documentId = file.documentId
+    if (!documentId || pollBusy.has(documentId)) return
+    pollBusy.add(documentId)
+    try {
+      const { data } = await getDoc(documentId)
+      const terminal = applyDocStatus(file, data.item)
+      if (terminal) stopPolling(documentId)
+    } catch {
+      // 网络抖动/临时错误：保留现有状态，下一轮重试；404 等永久错误也会在
+      // 文档状态变为 failed 后由 applyDocStatus 停止。
+    } finally {
+      pollBusy.delete(documentId)
+    }
+  }
+
+  function startPolling(file: ReviewFile) {
+    const documentId = file.documentId
+    if (!documentId || pollTimers.has(documentId)) return
+    void pollDocOnce(file)
+    const timer = setInterval(() => { void pollDocOnce(file) }, POLL_INTERVAL_MS)
+    pollTimers.set(documentId, timer)
+  }
+
+  function stopPolling(documentId: string) {
+    const timer = pollTimers.get(documentId)
+    if (timer) clearInterval(timer)
+    pollTimers.delete(documentId)
+  }
+
+  /** 清理所有轮询定时器（组件卸载/页面离开时调用） */
+  function dispose() {
+    for (const timer of pollTimers.values()) clearInterval(timer)
+    pollTimers.clear()
+    pollBusy.clear()
+  }
+
+  /** 从后端恢复最近 24h 内的批次及其文件（刷新页面后不丢队列） */
+  async function restoreFromServer(): Promise<boolean> {
+    if (restoreAttempted || files.value.length > 0) return false
+    restoreAttempted = true
+    restoring.value = true
+    try {
+      const { data } = await reviewApi.listBatches({ page: 1, page_size: 5 })
+      const latest = [...data.items].sort((a, b) => Date.parse(b.created_at || '') - Date.parse(a.created_at || ''))[0]
+      if (!latest || !latest.documents?.length) return false
+      const ageMs = Date.now() - Date.parse(latest.created_at || '')
+      if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > RESTORE_WINDOW_MS) return false
+      batchId.value = latest.id
+      for (const member of latest.documents) {
+        files.value.push({
+          id: member.id,
+          name: member.filename,
+          size: '',
+          progress: STATUS_PROGRESS.queued,
+          status: 'queued',
+          documentId: member.document_id,
+          documentVersionId: member.document_version_id,
+        })
+        // 通过响应式代理启动轮询，状态刷新会同步到模板
+        const tracked = files.value[files.value.length - 1]!
+        if (tracked.documentId) startPolling(tracked)
+      }
+      return true
+    } catch {
+      return false
+    } finally {
+      restoring.value = false
+    }
+  }
+
   async function removeFile(id: string) {
     const index = files.value.findIndex((item) => item.id === id)
     if (index < 0) return
+    const file = files.value[index]
     if (batchId.value && !id.startsWith('upload-')) await reviewApi.removeBatchDocument(batchId.value, id)
+    if (file.documentId) stopPolling(file.documentId)
     files.value.splice(index, 1)
   }
 
@@ -215,9 +353,10 @@ export const useReviewStore = defineStore('review', () => {
       suggestion: item.suggestion,
       confidence: item.confidence || 'llm_unknown',
       evidence: item.evidence_anchor,
+      documentId: item.document_id,
+      documentVersionId: item.document_version_id,
       action: item.decision?.decision_type === 'accepted' ? 'accepted' : item.decision?.decision_type === 'dismissed' ? 'dismissed' : 'pending',
     }))
-    if (!activeFindingId.value && risks.value[0]) activeFindingId.value = risks.value[0].id
   }
 
   function subscribeAnalysis() {
@@ -269,11 +408,11 @@ export const useReviewStore = defineStore('review', () => {
   return {
     currentStep, batchId, selectedTemplateId, sensitivity, markingMode, analysisProfile,
     analysisStatus, analysisJobId, analysisRevision, decisionRevision, files, templates, clauses, risks,
-    loadState, error, partialFailure, activeFindingId, readyCount, enabledClauses,
+    loadState, error, partialFailure, activeFindingId, readyCount, enabledClauses, restoring,
     nextStep, previousStep, goToStep, initialize, loadTemplates, loadRules, createRule, createTemplate, ensureBatch,
     uploadAndAddFiles, removeFile, selectTemplate, toggleClause, setSensitivity, startAnalysis,
     refreshJob, loadFindings, subscribeAnalysis, decideRisk, finalizeDraft, exportReport, resetError,
-    completeAnalysis, approveDraft, rejectChanges,
+    completeAnalysis, approveDraft, rejectChanges, restoreFromServer, dispose, applyDocStatus,
   }
 })
 

@@ -85,6 +85,25 @@ def reconcile_document_publications() -> None:
     document_store.reconcile_pending_deletions()
 
 
+def backfill_evidence_spans() -> None:
+    """启动时为已 ready 的存量文档懒生成 evidence_spans.json（幂等）。"""
+    import logging
+
+    from services import evidence_spans
+
+    try:
+        results = evidence_spans.backfill_all_ready_docs()
+        generated = [row for row in results if row.get("ok")]
+        if generated:
+            logging.getLogger(__name__).info(
+                "evidence_spans backfill generated for %d docs: %s",
+                len(generated),
+                [row["doc_id"] for row in generated],
+            )
+    except Exception:
+        logging.getLogger(__name__).exception("evidence spans backfill failed")
+
+
 def validate_security_boundary() -> None:
     validate_bind_host()
     validate_startup_secrets()
@@ -92,6 +111,7 @@ def validate_security_boundary() -> None:
 
 app.router.add_event_handler("startup", validate_security_boundary)
 app.router.add_event_handler("startup", reconcile_document_publications)
+app.router.add_event_handler("startup", backfill_evidence_spans)
 app.router.add_event_handler("startup", review.startup_drift_scan)
 
 

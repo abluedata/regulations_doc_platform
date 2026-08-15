@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   ArrowLeft,
@@ -15,7 +15,7 @@ import {
 import ReviewFooter from '@/components/review/ReviewFooter.vue'
 import ReviewStepper from '@/components/review/ReviewStepper.vue'
 import { useReviewStore } from '@/stores/review'
-import type { ReviewFile } from '@/types'
+import type { ReviewFile, ReviewFileStatus } from '@/types'
 
 const review = useReviewStore()
 const router = useRouter()
@@ -25,26 +25,50 @@ const batchName = ref('Q3 Legal Review - EMEA')
 const documentType = ref('商业合同')
 const ocrEnabled = ref(true)
 
+const STAGE_LABELS: Record<ReviewFileStatus, string> = {
+  uploading: '上传中',
+  queued: '排队中',
+  parsing: '解析版面中',
+  chunking: '抽取文本中',
+  indexing: '分块向量化',
+  ready: '已就绪',
+  failed: '处理失败',
+}
+
 const readyCount = computed(() => review.files.filter((file) => file.status === 'ready').length)
 
 onMounted(() => {
   review.goToStep(Number(route.meta.reviewStep) || 1)
   void review.initialize()
+  void review.restoreFromServer()
+})
+
+onUnmounted(() => {
+  review.dispose()
 })
 
 function fileIcon(file: ReviewFile) {
   return file.status === 'uploading' ? DocumentCopy : Document
 }
 
+function fileStageText(file: ReviewFile) {
+  const meta = file.size ? `${file.size} · ` : ''
+  if (file.status === 'ready') return `${meta}已就绪`
+  if (file.status === 'failed') return file.error ? `失败：${file.error}` : '处理失败'
+  return `${meta}${file.stageLabel || STAGE_LABELS[file.status] || '处理中'}`
+}
+
 function fileStatusLabel(file: ReviewFile) {
-  if (file.status === 'ready') return '就绪'
+  if (file.status === 'ready') return '已就绪'
+  if (file.status === 'failed') return '处理失败'
   if (file.status === 'uploading') return `${file.progress}% 上传中`
-  return '排队中'
+  return file.stageLabel || STAGE_LABELS[file.status] || '处理中'
 }
 
 function fileStatusIcon(file: ReviewFile) {
   if (file.status === 'ready') return CircleCheckFilled
   if (file.status === 'uploading') return Loading
+  if (file.status === 'failed') return Close
   return Clock
 }
 
@@ -105,20 +129,40 @@ async function goPrevious() {
         <section class="file-queue" aria-labelledby="file-queue-title">
           <div class="section-bar">
             <h2 id="file-queue-title">文件队列</h2>
-            <span>已选择 {{ review.files.length }} 个文件</span>
+            <span>{{ review.restoring ? '正在恢复最近批次…' : `已选择 ${review.files.length} 个文件` }}</span>
           </div>
           <ul class="file-list">
-            <li v-for="file in review.files" :key="file.id" class="file-row" :data-file-id="file.id">
+            <template v-if="review.restoring">
+              <li v-for="n in 2" :key="`skeleton-${n}`" class="file-row file-row--skeleton" data-test="file-restoring">
+                <el-skeleton animated>
+                  <template #template>
+                    <el-skeleton-item variant="circle" class="file-row__skeleton-icon" />
+                    <el-skeleton-item variant="text" class="file-row__skeleton-name" />
+                  </template>
+                </el-skeleton>
+              </li>
+            </template>
+            <li
+              v-for="file in review.files"
+              :key="file.id"
+              class="file-row"
+              :class="{ 'file-row--failed': file.status === 'failed' }"
+              :data-file-id="file.id"
+            >
               <span class="file-row__icon" :class="`file-row__icon--${file.status}`" aria-hidden="true">
                 <el-icon><component :is="fileIcon(file)" /></el-icon>
               </span>
               <span class="file-row__content">
                 <strong>{{ file.name }}</strong>
-                <span v-if="file.status === 'uploading'" class="file-progress">
-                  <span class="file-progress__track"><span :style="{ width: `${file.progress}%` }"></span></span>
-                  <small>{{ file.progress }}%</small>
-                </span>
-                <small v-else>{{ file.size }} · {{ file.status === 'ready' ? '已完成' : '等待中' }}</small>
+                <el-progress
+                  v-if="file.status !== 'ready'"
+                  class="file-row__progress"
+                  :percentage="file.progress"
+                  :status="file.status === 'failed' ? 'exception' : undefined"
+                  :stroke-width="7"
+                />
+                <small v-if="file.status !== 'failed' || !file.error" class="file-row__stage">{{ fileStageText(file) }}</small>
+                <small v-else class="file-row__error" :title="file.error">{{ file.error }}</small>
               </span>
               <span class="file-row__status" :class="`file-row__status--${file.status}`">
                 <el-icon aria-hidden="true"><component :is="fileStatusIcon(file)" /></el-icon>
@@ -345,7 +389,10 @@ async function goPrevious() {
 }
 
 .file-row__icon--ready,
-.file-row__icon--queued {
+.file-row__icon--queued,
+.file-row__icon--parsing,
+.file-row__icon--chunking,
+.file-row__icon--indexing {
   color: var(--danger);
   background: var(--danger-soft);
 }
@@ -353,6 +400,12 @@ async function goPrevious() {
 .file-row__icon--uploading {
   color: var(--action);
   background: var(--action-soft);
+}
+
+.file-row__icon--failed,
+.file-row--failed .file-row__status,
+.file-row__status--failed {
+  color: var(--danger);
 }
 
 .file-row__content,
@@ -368,6 +421,57 @@ async function goPrevious() {
   font-size: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.file-row__progress {
+  max-width: 260px;
+}
+
+.file-row__progress :deep(.el-progress-bar__outer) {
+  background: var(--action-soft);
+}
+
+.file-row__progress :deep(.el-progress-bar__inner) {
+  background: var(--action);
+}
+
+.file-row--failed .file-row__progress :deep(.el-progress-bar__inner) {
+  background: var(--danger);
+}
+
+.file-row__progress :deep(.el-progress__text) {
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+
+.file-row__stage {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-row__error {
+  overflow: hidden;
+  color: var(--danger);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-row--skeleton .el-skeleton {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 14px;
+}
+
+.file-row__skeleton-icon {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+}
+
+.file-row__skeleton-name {
+  flex: 1;
 }
 
 .file-progress {

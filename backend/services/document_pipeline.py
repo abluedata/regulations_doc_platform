@@ -58,6 +58,10 @@ from services.document_store import (
     version_artifacts_match,
     write_version_artifacts,
 )
+from services.evidence_spans import (
+    spans_from_content_list,
+    write_evidence_spans,
+)
 from services.visibility import ensure_visibility_mapping, response_body
 
 # MinerU 适配服务（默认 8003；见 mineru_service/）
@@ -114,8 +118,15 @@ def _run_pipeline(doc_id: str) -> None:
 
         # ── parsing ──
         update_status(doc_id, "parsing", engine=_engine_name(ext))
+        content_list = None
+        task_id = None
         if ext in ("pdf", "docx"):
-            raw_blocks, page_count, engine = _parse_with_mineru_or_fallback(src, ext)
+            parsed = _parse_with_mineru_or_fallback(src, ext)
+            raw_blocks, page_count, engine = parsed[0], parsed[1], parsed[2]
+            if len(parsed) > 3:
+                content_list = parsed[3]
+            if len(parsed) > 4:
+                task_id = parsed[4]
         else:
             update_status(
                 doc_id,
@@ -155,6 +166,13 @@ def _run_pipeline(doc_id: str) -> None:
             update_status(doc_id, "failed", error="分块结果为空")
             return
 
+        # ── evidence spans（MinerU 原始坐标 pt，供 PDF 高亮定位）──
+        evidence_spans = None
+        if content_list:
+            evidence_spans = spans_from_content_list(
+                content_list, task_id=task_id, engine=engine
+            )
+
         elapsed = round(time.time() - t0, 1)
         manifest = {
             "version_id": version_id,
@@ -165,7 +183,10 @@ def _run_pipeline(doc_id: str) -> None:
             "engine": engine,
         }
         try:
-            write_version_artifacts(doc_id, version_id, ir, preview_md, manifest)
+            write_version_artifacts(
+                doc_id, version_id, ir, preview_md, manifest,
+                evidence_spans=evidence_spans,
+            )
         except FileExistsError:
             if not version_artifacts_match(
                 doc_id, version_id, ir, preview_md, manifest
@@ -173,6 +194,9 @@ def _run_pipeline(doc_id: str) -> None:
                 raise RuntimeError(
                     f"版本 ID 冲突，已存产物与本次解析不同: {version_id}"
                 )
+            # 旧版本（无 evidence spans）重析同源文件：补写缺失的证据坐标
+            if evidence_spans:
+                write_evidence_spans(doc_id, version_id, evidence_spans)
 
         # Deletion must not clean ES between indexing and current publication.
         with document_publication_guard(doc_id):
@@ -211,13 +235,17 @@ def _engine_name(ext: str) -> str:
 
 def _parse_with_mineru_or_fallback(
     path: Path, ext: str
-) -> tuple[list[dict], int | None, str]:
-    """PDF/DOCX 优先走 MinerU pipeline 适配服务，失败按类型降级。"""
+) -> tuple:
+    """PDF/DOCX 优先走 MinerU pipeline 适配服务，失败按类型降级。
+
+    MinerU 成功时返回 5 元组 (blocks, pages, engine, content_list, task_id)；
+    降级路径返回 3 元组 (blocks, pages, engine)。
+    """
     try:
-        blocks, pages, backend = _parse_via_mineru(path)
+        blocks, pages, backend, content_list, task_id = _parse_via_mineru(path)
         if blocks:
             engine = f"mineru:{backend}" if backend else "mineru"
-            return blocks, pages, engine
+            return blocks, pages, engine, content_list, task_id
         raise RuntimeError("MinerU 返回空 blocks")
     except Exception as e:
         print(f"⚠️ MinerU 不可用 ({ext}): {e}")
@@ -233,12 +261,15 @@ def _parse_with_mineru_or_fallback(
     raise RuntimeError(f"无降级解析器: {ext}")
 
 
-def _parse_via_mineru(path: Path) -> tuple[list[dict], int | None, str | None]:
+def _parse_via_mineru(path: Path) -> tuple:
     """调用独立 MinerU 适配服务。
 
     约定：
       POST {MINERU_URL}/parse  multipart file →
-      { "pages": N, "blocks": [...], "markdown": "...", "backend": "pipeline" }
+      { "pages": N, "blocks": [...], "markdown": "...", "backend": "pipeline",
+        "content_list": [...], "task_id": "..." }
+
+    返回 (blocks, pages, backend, content_list, task_id)。
     """
     mime, _ = mimetypes.guess_type(str(path))
     if not mime:
@@ -263,11 +294,13 @@ def _parse_via_mineru(path: Path) -> tuple[list[dict], int | None, str | None]:
     data = resp.json()
     pages = data.get("pages") or data.get("page_count")
     backend = data.get("backend")
+    content_list = data.get("content_list")
+    task_id = data.get("task_id")
     if data.get("blocks"):
-        return data["blocks"], pages, backend
+        return data["blocks"], pages, backend, content_list, task_id
     md = data.get("markdown") or data.get("md") or ""
     if md:
-        return _markdown_to_raw_blocks(md), pages, backend
+        return _markdown_to_raw_blocks(md), pages, backend, content_list, task_id
     raise RuntimeError("MinerU 返回空结果")
 
 

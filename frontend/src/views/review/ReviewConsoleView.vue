@@ -1,33 +1,39 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
+  Check,
+  Close,
   Download,
-  MoreFilled,
-  Printer,
-  ZoomIn,
-  ZoomOut,
+  View,
 } from '@element-plus/icons-vue'
 import RiskCard from '@/components/review/RiskCard.vue'
 import ReviewAssistant from '@/components/review/ReviewAssistant.vue'
 import ReviewFooter from '@/components/review/ReviewFooter.vue'
+import ReviewPdfPreview from '@/components/review/ReviewPdfPreview.vue'
 import ReviewStepper from '@/components/review/ReviewStepper.vue'
 import { useReviewStore } from '@/stores/review'
 import { downloadExportArtifact } from '@/api/review'
+import type { ReviewHighlightRect, ReviewRisk } from '@/types'
 
 const review = useReviewStore()
 const router = useRouter()
 const route = useRoute()
-const selectedRiskId = ref('')
-const zoom = ref(100)
 const activeAnalysisTab = ref<'findings' | 'assistant'>('findings')
 const loading = ref(false)
 const loadError = ref('')
 const exporting = ref(false)
 const exportError = ref('')
+const decidingFindingId = ref('')
+const decideError = ref('')
+const narrowMode = ref(false)
+const narrowPane = ref<'preview' | 'detail'>('preview')
+let narrowQuery: MediaQueryList | null = null
 
 const hasJob = computed(() => Boolean(review.analysisJobId))
-const selectedRisk = computed(() => review.risks.find((risk) => risk.id === selectedRiskId.value))
+const selectedRisk = computed(
+  () => review.risks.find((risk) => risk.id === review.activeFindingId) ?? null,
+)
 const findingCount = computed(() => review.risks.length)
 const overallRisk = computed(() => {
   if (!review.risks.length) return '无'
@@ -42,11 +48,49 @@ const documentLabel = computed(() => {
 const analysisInProgress = computed(() =>
   ['loading', 'queued', 'parsing', 'running'].includes(review.analysisStatus),
 )
+const severityMeta = computed(() => {
+  const level = selectedRisk.value?.level ?? 'low'
+  if (level === 'high') return { label: '高风险', type: 'danger' as const }
+  if (level === 'medium') return { label: '中风险', type: 'warning' as const }
+  return { label: '低风险', type: 'info' as const }
+})
+
+/** PDF 预览加载哪个文档：优先选中 finding 的文档，其次批次中第一个文档 */
+const pdfDocId = computed(() => {
+  if (selectedRisk.value?.documentId) return selectedRisk.value.documentId
+  return review.files.find((file) => file.documentId)?.documentId ?? ''
+})
+const activePage = computed(() => {
+  const evidence = selectedRisk.value?.evidence
+  if (!evidence) return null
+  return evidencePage(evidence)
+})
+const highlightRects = computed<ReviewHighlightRect[]>(() => {
+  const evidence = selectedRisk.value?.evidence
+  if (!evidence) return []
+  return evidenceRects(evidence)
+})
 
 onMounted(() => {
   review.goToStep(Number(route.meta.reviewStep) || 4)
+  // 支持 deep-link：/review/console?jobId=xxx 直接加载指定审查任务（刷新页面后也可恢复）
+  const jobId = typeof route.query.jobId === 'string' ? route.query.jobId : ''
+  if (jobId && jobId !== review.analysisJobId) review.analysisJobId = jobId
   if (review.analysisJobId) void loadResults()
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    narrowQuery = window.matchMedia('(max-width: 1199px)')
+    narrowMode.value = narrowQuery.matches
+    narrowQuery.addEventListener('change', onNarrowChange)
+  }
 })
+
+onBeforeUnmount(() => {
+  if (narrowQuery) narrowQuery.removeEventListener('change', onNarrowChange)
+})
+
+function onNarrowChange(event: MediaQueryListEvent) {
+  narrowMode.value = event.matches
+}
 
 async function loadResults() {
   loading.value = true
@@ -54,7 +98,6 @@ async function loadResults() {
   try {
     await review.refreshJob()
     await review.loadFindings()
-    if (!selectedRiskId.value && review.risks[0]) selectedRiskId.value = review.risks[0].id
   } catch (err) {
     loadError.value = err instanceof Error ? err.message : '审查结果加载失败'
   } finally {
@@ -62,15 +105,73 @@ async function loadResults() {
   }
 }
 
+/** 点击问题卡片：选中（跳到证据页 + 高亮）；再点同一问题取消选中 */
+function toggleRisk(id: string) {
+  if (review.activeFindingId === id) {
+    review.activeFindingId = null
+    activeAnalysisTab.value = 'findings'
+    return
+  }
+  selectRisk(id)
+}
+
 function selectRisk(id: string) {
-  selectedRiskId.value = id
+  review.activeFindingId = id
   const risk = review.risks.find((item) => item.id === id)
   if (risk?.evidence) locateCitation(risk.evidence)
+}
+
+/** 「定位证据」按钮：总是选中并跳到证据位置 */
+function locateRisk(risk: ReviewRisk) {
+  activeAnalysisTab.value = 'findings'
+  selectRisk(risk.id)
 }
 
 function locateCitation(anchor: Record<string, unknown>) {
   activeAnalysisTab.value = 'findings'
   window.dispatchEvent(new CustomEvent('review:locate-evidence', { detail: anchor }))
+}
+
+/** evidence_anchor → 预览高亮矩形列表（无 rect / precision=page 时退化为页级标记） */
+function evidenceRects(anchor: Record<string, unknown>): ReviewHighlightRect[] {
+  const page = evidencePage(anchor)
+  const precision = anchor.precision
+  const rawRects = Array.isArray(anchor.rects) ? anchor.rects : []
+  const space = String(anchor.coordinate_space || 'pdf-pt')
+  if (precision === 'page' || rawRects.length === 0) {
+    return [{ page, x0: 0, y0: 0, x1: 0, y1: 0, space, pageLevel: true }]
+  }
+  return rawRects.map((rect: Record<string, unknown>) => ({
+    page: Math.max(1, Math.round(Number(rect.page) || page)),
+    x0: Number(rect.x0) || 0,
+    y0: Number(rect.y0) || 0,
+    x1: Number(rect.x1) || 0,
+    y1: Number(rect.y1) || 0,
+    space: String(rect.space || space),
+  }))
+}
+
+function evidencePage(anchor: Record<string, unknown>) {
+  const page = Number(anchor.page_number)
+  return Number.isFinite(page) && page > 0 ? Math.round(page) : 1
+}
+
+function evidencePrecisionLabel(anchor: Record<string, unknown>) {
+  return anchor.precision === 'page' ? '页级定位' : '精确定位'
+}
+
+async function decideRisk(decision: 'accepted' | 'dismissed') {
+  const risk = selectedRisk.value
+  if (!risk || decidingFindingId.value) return
+  decidingFindingId.value = risk.id
+  decideError.value = ''
+  try {
+    await review.decideRisk(risk.id, decision, '')
+  } catch (err) {
+    decideError.value = err instanceof Error ? err.message : '处置提交失败'
+  } finally {
+    decidingFindingId.value = ''
+  }
 }
 
 function approveDraft() {
@@ -104,11 +205,6 @@ function goToUpload() {
   review.goToStep(1)
   void router.push({ name: 'review-upload' })
 }
-
-// 纯阅读缩放：仅调整正文显示比例，不参与证据定位。
-function adjustZoom(amount: number) {
-  zoom.value = Math.min(120, Math.max(80, zoom.value + amount))
-}
 </script>
 
 <template>
@@ -129,48 +225,9 @@ function adjustZoom(amount: number) {
     </div>
 
     <template v-else>
-      <div class="console-layout">
-        <main class="reader-panel">
-          <div class="reader-toolbar">
-            <div class="reader-toolbar__title"><strong>文档正文</strong></div>
-            <div class="reader-tools" aria-label="阅读工具">
-              <button type="button" aria-label="缩小" @click="adjustZoom(-10)"><el-icon><ZoomOut /></el-icon></button>
-              <span>{{ zoom }}%</span>
-              <button type="button" aria-label="放大" @click="adjustZoom(10)"><el-icon><ZoomIn /></el-icon></button>
-              <button type="button" aria-label="打印"><el-icon><Printer /></el-icon></button>
-              <button type="button" aria-label="更多"><el-icon><MoreFilled /></el-icon></button>
-            </div>
-          </div>
-
-          <article class="document-paper" :style="{ '--document-scale': `${zoom / 100}` }">
-            <div class="paper-heading">
-              <span>MASTER SERVICE AGREEMENT</span>
-              <small>服务级别协议</small>
-            </div>
-            <section>
-              <h2>1. DEFINITIONS.</h2>
-              <p>"Services" means the consulting and technical implementation services provided by Provider to Client as described in the applicable Statement of Work. "Deliverables" means all work product, reports, software, and other materials developed specifically for Client.</p>
-            </section>
-            <section>
-              <h2>2. SCOPE OF SERVICES.</h2>
-              <p>Provider shall provide the Services and Deliverables set forth in each SOW. Each SOW shall be deemed a part of this Agreement. In the event of a conflict between this Agreement and an SOW, this Agreement shall prevail unless the SOW specifically states otherwise.</p>
-            </section>
-            <section>
-              <h2>3. LIMITATION OF LIABILITY.</h2>
-              <p>Notwithstanding any provision to the contrary, Provider's total aggregate liability arising out of or related to this Agreement shall be limited to $5,000,000 USD. Client waives all claims for incidental, consequential, or punitive damages under any legal theory whatsoever.</p>
-            </section>
-            <section>
-              <h2>4. INTELLECTUAL PROPERTY.</h2>
-              <p>Client shall own all right, title and interest in and to the Deliverables upon full payment of the applicable fees. Provider retains all rights to its pre-existing materials, tools, and methodologies used in the performance of the Services.</p>
-            </section>
-            <section>
-              <h2>5. INDEMNIFICATION.</h2>
-              <p>Provider shall indemnify, defend, and hold harmless Client from claims arising from a breach of this Agreement.</p>
-            </section>
-          </article>
-        </main>
-
-        <aside class="findings-panel">
+      <div class="console-layout" :class="{ 'console-layout--narrow': narrowMode }">
+        <!-- 左：审查发现列表 -->
+        <aside class="findings-panel" aria-label="审查发现列表">
           <div class="findings-heading">
             <h2>审查结果</h2>
           </div>
@@ -211,20 +268,33 @@ function adjustZoom(amount: number) {
             <div class="findings-section">
               <div class="findings-section__title"><h3>审查发现</h3><span>{{ findingCount }} 项</span></div>
               <div class="risk-list">
-                <RiskCard
+                <div
                   v-for="risk in review.risks"
                   :key="risk.id"
-                  :risk="risk"
-                  :action="risk.action ?? 'pending'"
-                  @select="selectRisk"
-                />
+                  class="risk-item"
+                  :class="{ 'risk-item--active': review.activeFindingId === risk.id }"
+                >
+                  <RiskCard
+                    :risk="risk"
+                    :action="risk.action ?? 'pending'"
+                    :selected="review.activeFindingId === risk.id"
+                    @select="toggleRisk"
+                  />
+                  <button
+                    type="button"
+                    class="risk-locate"
+                    data-test="locate-evidence"
+                    :aria-label="`定位证据：${risk.title}`"
+                    @click="locateRisk(risk)"
+                  >
+                    <el-icon aria-hidden="true"><View /></el-icon>
+                    定位证据
+                  </button>
+                </div>
               </div>
               <div v-if="loadError" class="findings-empty findings-empty--error" role="alert">{{ loadError }}</div>
               <div v-else-if="loading && !review.risks.length" class="findings-empty">正在加载审查结果…</div>
               <div v-else-if="!review.risks.length" class="findings-empty">暂无审查发现</div>
-            </div>
-            <div v-if="selectedRisk" class="selected-risk-note">
-              已选中「{{ selectedRisk.section }}」{{ selectedRisk.title }}
             </div>
             <p v-if="exportError" class="console-error" role="alert">{{ exportError }}</p>
             <div class="console-actions">
@@ -242,7 +312,100 @@ function adjustZoom(amount: number) {
             </div>
           </div>
           <div v-else id="assistant-panel-content" role="tabpanel" aria-labelledby="assistant-tab">
-            <ReviewAssistant :risk="selectedRisk" @locate="locateCitation" />
+            <ReviewAssistant :risk="selectedRisk ?? undefined" @locate="locateCitation" />
+          </div>
+        </aside>
+
+        <!-- 窄屏切换：预览 / 详情 -->
+        <div v-if="narrowMode" class="narrow-switch" role="tablist" aria-label="预览与详情切换">
+          <button
+            type="button"
+            role="tab"
+            data-test="narrow-preview-tab"
+            :aria-selected="narrowPane === 'preview'"
+            :class="{ 'narrow-switch__active': narrowPane === 'preview' }"
+            @click="narrowPane = 'preview'"
+          >PDF 预览</button>
+          <button
+            type="button"
+            role="tab"
+            data-test="narrow-detail-tab"
+            :aria-selected="narrowPane === 'detail'"
+            :class="{ 'narrow-switch__active': narrowPane === 'detail' }"
+            @click="narrowPane = 'detail'"
+          >问题详情</button>
+        </div>
+
+        <!-- 中：PDF 预览 + 证据高亮 -->
+        <main class="reader-panel" :class="{ 'pane-hidden': narrowMode && narrowPane !== 'preview' }">
+          <ReviewPdfPreview
+            :doc-id="pdfDocId"
+            :highlight-rects="highlightRects"
+            :active-page="activePage"
+            :scale="100"
+          />
+        </main>
+
+        <!-- 右：问题详情 -->
+        <aside class="detail-panel" :class="{ 'pane-hidden': narrowMode && narrowPane !== 'detail' }" aria-label="问题详情">
+          <template v-if="selectedRisk">
+            <header class="detail-header">
+              <el-tag :type="severityMeta.type" size="small" effect="dark">{{ severityMeta.label }}</el-tag>
+              <h2 data-test="detail-title">{{ selectedRisk.title }}</h2>
+              <p class="detail-section">{{ selectedRisk.section }}</p>
+            </header>
+
+            <div class="detail-body">
+              <div class="detail-block" data-test="detail-quote">
+                <h3>原文引用</h3>
+                <blockquote>{{ selectedRisk.quote || selectedRisk.currentText || '（未提供原文引用）' }}</blockquote>
+              </div>
+              <div class="detail-block" data-test="detail-reason">
+                <h3>风险原因</h3>
+                <p>{{ selectedRisk.description }}</p>
+              </div>
+              <div class="detail-block" data-test="detail-suggestion">
+                <h3>修改建议</h3>
+                <p>{{ selectedRisk.suggestion || '（暂无修改建议）' }}</p>
+              </div>
+              <div v-if="selectedRisk.evidence" class="detail-block detail-block--evidence" data-test="detail-evidence">
+                <h3>证据定位</h3>
+                <p>第 {{ evidencePage(selectedRisk.evidence) }} 页 · {{ evidencePrecisionLabel(selectedRisk.evidence) }}</p>
+                <el-button size="small" type="primary" plain data-test="detail-locate" @click="locateRisk(selectedRisk)">
+                  <el-icon aria-hidden="true"><View /></el-icon>
+                  定位证据
+                </el-button>
+              </div>
+            </div>
+
+            <p v-if="decideError" class="detail-error" role="alert">{{ decideError }}</p>
+
+            <footer class="detail-actions">
+              <el-button
+                data-test="decide-accept"
+                :type="selectedRisk.action === 'accepted' ? 'success' : 'primary'"
+                :plain="selectedRisk.action !== 'accepted'"
+                :loading="decidingFindingId === selectedRisk.id"
+                @click="decideRisk('accepted')"
+              >
+                <el-icon aria-hidden="true"><Check /></el-icon>
+                {{ selectedRisk.action === 'accepted' ? '已采纳建议' : '采纳建议' }}
+              </el-button>
+              <el-button
+                data-test="decide-dismiss"
+                :type="selectedRisk.action === 'dismissed' ? 'info' : 'default'"
+                :loading="decidingFindingId === selectedRisk.id"
+                @click="decideRisk('dismissed')"
+              >
+                <el-icon aria-hidden="true"><Close /></el-icon>
+                {{ selectedRisk.action === 'dismissed' ? '已忽略风险' : '忽略风险' }}
+              </el-button>
+            </footer>
+          </template>
+
+          <div v-else class="detail-empty" data-test="detail-empty">
+            <el-icon aria-hidden="true"><View /></el-icon>
+            <p>点击左侧发现查看详情，或使用「定位证据」跳到原文对应位置。</p>
           </div>
         </aside>
       </div>
@@ -307,122 +470,49 @@ function adjustZoom(amount: number) {
   line-height: 1.7;
 }
 
+/* 三栏布局：发现列表 | PDF 预览 | 问题详情 */
 .console-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: 300px minmax(0, 1fr) 320px;
   min-height: 680px;
   border: 1px solid var(--outline-soft);
   background: var(--surface);
 }
 
-.reader-panel {
-  min-width: 0;
-  overflow: auto;
-  background: #eef2f8;
-}
-
-.reader-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-height: 62px;
-  padding: 12px 24px;
-  border-bottom: 1px solid var(--outline-soft);
-  background: var(--surface);
-}
-
-.reader-toolbar__title {
-  display: flex;
-  align-items: center;
-}
-
-.reader-tools {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.reader-tools > span {
-  color: var(--ink-muted);
-  font-size: 11px;
-}
-
-.reader-tools button {
-  display: grid;
-  width: var(--control-height);
-  height: var(--control-height);
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-sm);
-  color: var(--ink-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.reader-tools button:hover {
-  color: var(--action);
-  background: var(--surface-low);
-}
-
-.document-paper {
-  width: min(calc(100% - 48px), 720px);
-  min-height: 980px;
-  margin: 24px auto;
-  padding: 44px 54px;
-  border: 1px solid #c4ccd8;
-  background: var(--surface);
-  box-shadow: var(--shadow-sm);
-  font-size: calc(14px * var(--document-scale));
-}
-
-.paper-heading {
-  padding-bottom: 20px;
-  border-bottom: 1px solid var(--outline-soft);
-  text-align: center;
-}
-
-.paper-heading span,
-.paper-heading small {
-  display: block;
-}
-
-.paper-heading span {
-  color: var(--ink);
-  font-size: 21px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-}
-
-.paper-heading small {
-  margin-top: 7px;
-  color: var(--ink-muted);
-}
-
-.document-paper section {
-  margin-top: 24px;
-}
-
-.document-paper h2 {
-  display: inline;
-  margin: 0;
-  font-size: 15px;
-}
-
-.document-paper p {
-  display: inline;
-  margin: 0;
-  color: #263448;
-  line-height: 1.85;
-}
-
 .findings-panel {
   display: flex;
   min-width: 0;
+  min-height: 0;
   flex-direction: column;
+  border-right: 1px solid var(--outline-soft);
+  background: var(--surface);
+}
+
+.reader-panel {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: #eef2f8;
+}
+
+.detail-panel {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow-y: auto;
   border-left: 1px solid var(--outline-soft);
   background: var(--surface);
+}
+
+.narrow-switch {
+  display: none;
+}
+
+.pane-hidden {
+  display: none;
 }
 
 .analysis-tabs {
@@ -458,6 +548,7 @@ function adjustZoom(amount: number) {
   min-height: 0;
   flex: 1;
   flex-direction: column;
+  overflow-y: auto;
 }
 
 .findings-heading {
@@ -530,7 +621,38 @@ function adjustZoom(amount: number) {
 
 .risk-list {
   display: grid;
-  gap: 10px;
+  gap: 12px;
+}
+
+.risk-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.risk-locate {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-end;
+  gap: 5px;
+  min-height: 26px;
+  padding: 3px 10px;
+  border: 1px solid var(--outline-soft);
+  border-radius: var(--radius-sm);
+  color: var(--action);
+  background: var(--surface);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.risk-locate:hover {
+  border-color: var(--action);
+  background: var(--action-soft);
+}
+
+.risk-item--active .risk-locate {
+  border-color: var(--action-outline);
 }
 
 .findings-empty {
@@ -547,16 +669,6 @@ function adjustZoom(amount: number) {
   border-color: var(--danger-outline);
   color: var(--danger);
   background: var(--danger-soft);
-}
-
-.selected-risk-note {
-  margin: 0 20px 14px;
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  color: var(--ink-muted);
-  background: var(--surface-low);
-  font-size: 11px;
-  line-height: 1.55;
 }
 
 .console-error {
@@ -583,13 +695,147 @@ function adjustZoom(amount: number) {
   grid-column: 1 / -1;
 }
 
-@media (max-width: 1200px) {
+/* 问题详情 */
+.detail-header {
+  padding: 20px;
+  border-bottom: 1px solid var(--outline-soft);
+  background: var(--surface-low);
+}
+
+.detail-header h2 {
+  margin: 12px 0 6px;
+  font-size: 17px;
+  line-height: 1.45;
+}
+
+.detail-section {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+
+.detail-body {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+}
+
+.detail-block h3 {
+  margin: 0 0 8px;
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.detail-block p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.detail-block blockquote {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--action);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--ink);
+  background: var(--surface-low);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.detail-block--evidence {
+  padding: 12px;
+  border: 1px solid var(--action-outline);
+  border-radius: var(--radius-sm);
+  background: var(--action-subtle);
+}
+
+.detail-block--evidence .el-button {
+  margin-top: 8px;
+}
+
+.detail-error {
+  margin: 0 20px 12px;
+  color: var(--danger);
+  font-size: 11px;
+}
+
+.detail-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: auto;
+  padding: 16px 20px 20px;
+  border-top: 1px solid var(--outline-soft);
+}
+
+.detail-actions .el-button {
+  width: 100%;
+  margin: 0;
+}
+
+.detail-empty {
+  display: grid;
+  min-height: 360px;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  padding: 24px;
+  color: var(--ink-muted);
+  text-align: center;
+}
+
+.detail-empty .el-icon {
+  font-size: 30px;
+  color: var(--outline);
+}
+
+.detail-empty p {
+  max-width: 220px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+@media (max-width: 1199px) {
   .console-layout {
-    grid-template-columns: minmax(0, 1fr) 320px;
+    grid-template-columns: 1fr;
   }
 
-  .document-paper {
-    padding: 38px 40px;
+  .findings-panel {
+    border-right: 0;
+    border-bottom: 1px solid var(--outline-soft);
+  }
+
+  .reader-panel,
+  .detail-panel {
+    min-height: 480px;
+    border-left: 0;
+  }
+
+  .console-layout--narrow .narrow-switch {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-bottom: 1px solid var(--outline-soft);
+  }
+
+  .narrow-switch button {
+    min-height: 44px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    color: var(--ink-muted);
+    background: var(--surface);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .narrow-switch .narrow-switch__active {
+    border-bottom-color: var(--action);
+    color: var(--action);
   }
 }
 
@@ -601,31 +847,6 @@ function adjustZoom(amount: number) {
   .console-header {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .console-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .findings-panel {
-    border-top: 1px solid var(--outline-soft);
-    border-left: 0;
-  }
-
-  .reader-toolbar {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .document-paper {
-    width: calc(100% - 24px);
-    min-height: 680px;
-    margin: 12px auto;
-    padding: 28px 22px;
-  }
-
-  .paper-heading span {
-    font-size: 16px;
   }
 }
 </style>

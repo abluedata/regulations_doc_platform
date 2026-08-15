@@ -4,8 +4,14 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import ReviewConsoleView from './ReviewConsoleView.vue'
+import ReviewPdfPreview from '@/components/review/ReviewPdfPreview.vue'
 import { useReviewStore } from '@/stores/review'
 import type { ReviewAnalysisStatus } from '@/types'
+
+vi.mock('pdfjs-dist', () => ({
+  getDocument: vi.fn(),
+  GlobalWorkerOptions: {},
+}))
 
 vi.mock('@/api/review', () => ({
   listRules: vi.fn(),
@@ -149,6 +155,91 @@ describe('ReviewConsoleView', () => {
 
     expect(wrapper.find('.review-assistant').exists()).toBe(true)
     expect(wrapper.find('.findings-content').exists()).toBe(false)
+  })
+
+  it('renders the three-column layout with PDF preview and detail panels', async () => {
+    setupJobStore({ findings: [finding] })
+    const { wrapper } = await mountConsole()
+
+    expect(wrapper.find('.reader-panel').exists()).toBe(true)
+    expect(wrapper.find('.detail-panel').exists()).toBe(true)
+    expect(wrapper.findComponent(ReviewPdfPreview).exists()).toBe(true)
+    expect(wrapper.find('[data-test="detail-empty"]').exists()).toBe(true)
+  })
+
+  it('locates evidence when the eye button is clicked: selects the finding, jumps to the page and highlights rects', async () => {
+    const store = setupJobStore({ findings: [finding] })
+    const { wrapper } = await mountConsole()
+
+    const events: CustomEvent[] = []
+    window.addEventListener('review:locate-evidence', (event) => events.push(event as CustomEvent))
+
+    await wrapper.get('[data-test="locate-evidence"]').trigger('click')
+    await flushPromises()
+
+    expect(store.activeFindingId).toBe('f1')
+    expect(wrapper.get('[data-test="detail-title"]').text()).toBe('责任限制过高')
+    expect(events).toHaveLength(1)
+    expect(events[0].detail).toEqual(evidenceAnchor)
+
+    const preview = wrapper.findComponent(ReviewPdfPreview)
+    expect(preview.props('activePage')).toBe(4)
+    expect(preview.props('highlightRects')).toEqual([
+      { page: 4, x0: 120, y0: 318, x1: 635, y1: 354, space: 'normalized-1000-top-left' },
+    ])
+  })
+
+  it('deselects the finding when the same card is clicked again (clears highlight)', async () => {
+    const store = setupJobStore({ findings: [finding] })
+    const { wrapper } = await mountConsole()
+
+    await wrapper.get('[data-test="locate-evidence"]').trigger('click')
+    await flushPromises()
+    expect(store.activeFindingId).toBe('f1')
+
+    await wrapper.get('.risk-card').trigger('click')
+    await flushPromises()
+
+    expect(store.activeFindingId).toBeNull()
+    expect(wrapper.find('[data-test="detail-empty"]').exists()).toBe(true)
+    const preview = wrapper.findComponent(ReviewPdfPreview)
+    expect(preview.props('highlightRects')).toEqual([])
+  })
+
+  it('submits accepted / dismissed decisions from the detail panel', async () => {
+    setupJobStore({ findings: [finding] })
+    const { wrapper } = await mountConsole()
+
+    await wrapper.get('[data-test="locate-evidence"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-test="decide-accept"]').trigger('click')
+    await flushPromises()
+    expect(reviewApi.decideFinding).toHaveBeenCalledWith('f1', { decision_type: 'accepted', comment: '' }, 0)
+
+    await wrapper.get('[data-test="decide-dismiss"]').trigger('click')
+    await flushPromises()
+    expect(reviewApi.decideFinding).toHaveBeenCalledWith('f1', { decision_type: 'dismissed', comment: '' }, expect.any(Number))
+  })
+
+  it('loads the analysis job passed via the jobId query parameter', async () => {
+    const store = setupJobStore({ findings: [finding] })
+    vi.mocked(reviewApi.getAnalysisJob).mockResolvedValue({
+      data: { ...jobPayload('complete'), id: 'job-9' },
+    } as never)
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/review/console', name: 'review-console', component: ReviewConsoleView },
+      ],
+    })
+    await router.push({ path: '/review/console', query: { jobId: 'job-9' } })
+    await router.isReady()
+    mount(ReviewConsoleView, { global: { plugins: [router, ElementPlus] } })
+    await flushPromises()
+
+    expect(store.analysisJobId).toBe('job-9')
+    expect(reviewApi.getAnalysisJob).toHaveBeenCalledWith('job-9')
   })
 
   it('guides the user back to upload when no analysis job exists', async () => {

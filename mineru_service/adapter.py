@@ -105,6 +105,10 @@ def parse_file_bytes(
         "pages": pages,
         "markdown": md,
         "blocks": blocks,
+        # 原始 content_list（含 PDF pt bbox 与 0-based page_idx），供业务侧
+        # 落库 evidence_spans.json；task_id 即 mineru-api 的 job 目录名。
+        "content_list": content_list,
+        "task_id": payload.get("task_id"),
         "engine": "mineru",
         "backend": payload.get("backend") or MINERU_BACKEND,
         "version": payload.get("version"),

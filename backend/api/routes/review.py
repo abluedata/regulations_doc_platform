@@ -29,6 +29,7 @@ from api.review_schemas import (
 )
 from core.config import DATA_ROOT
 from services import document_store
+from services import evidence_spans
 from services.review.assistant import ReviewAssistant
 from services.review.hitl import HitlDecisionMachine
 from services.review.job_runner import PersistentReviewQueue
@@ -239,6 +240,7 @@ def analysis_stream(job_id: str):
 def list_findings(job_id: str, page_number: int = Query(1, alias="page", ge=1), page_size: int = Query(50, ge=1, le=200), include_suppressed: bool = False):
     _require("jobs", job_id)
     findings = _store.list_findings(job_id)
+    findings = [_enrich_finding_anchor(item) for item in findings]
     if not include_suppressed:
         findings = [item for item in findings if not item.get("suppressed")]
     counts: dict[str, int] = {}
@@ -248,6 +250,14 @@ def list_findings(job_id: str, page_number: int = Query(1, alias="page", ge=1), 
     payload = page(findings, page_number=page_number, page_size=page_size)
     payload.update({"result_revision": current.get("result_revision", 0), "counts": counts})
     return payload
+
+
+def _enrich_finding_anchor(finding: Mapping[str, Any]) -> dict[str, Any]:
+    """用 evidence_spans 回填真实 evidence_anchor；失败时保持退化现状。"""
+    try:
+        return evidence_spans.enrich_evidence_anchor(dict(finding))
+    except Exception:
+        return dict(finding)
 
 
 @router.post("/analysis-jobs/{job_id}/retries", status_code=202)

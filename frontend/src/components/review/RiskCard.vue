@@ -9,9 +9,11 @@ const props = withDefaults(
   defineProps<{
     risk: ReviewRisk
     action?: RiskAction
+    selected?: boolean
   }>(),
   {
     action: 'pending',
+    selected: false,
   },
 )
 
@@ -35,7 +37,7 @@ const actionLabel = computed(() => {
 <template>
   <button
     class="risk-card"
-    :class="[`risk-card--${risk.level}`, { 'risk-card--resolved': action !== 'pending' }]"
+    :class="[`risk-card--${risk.level}`, { 'risk-card--resolved': action !== 'pending', 'risk-card--selected': selected }]"
     type="button"
     :data-risk-id="risk.id"
     :data-action="action"
@@ -110,6 +112,12 @@ const actionLabel = computed(() => {
 
 .risk-card--resolved {
   opacity: 0.72;
+}
+
+.risk-card--selected {
+  border-color: var(--action);
+  box-shadow: 0 0 0 1px var(--action), var(--shadow-sm);
+  background: var(--action-subtle);
 }
 
 .risk-card__heading {

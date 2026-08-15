@@ -34,6 +34,7 @@ export interface ReviewBatchDocument {
   filename: string
   status: string
   ir?: Record<string, unknown>
+  created_at?: string
 }
 
 export interface ReviewBatch {
@@ -43,6 +44,8 @@ export interface ReviewBatch {
   ocr_required: boolean
   revision: number
   documents: ReviewBatchDocument[]
+  created_at?: string
+  updated_at?: string
 }
 
 export interface ReviewFinding {
@@ -54,6 +57,8 @@ export interface ReviewFinding {
   quote: string
   location_label: string
   confidence?: string
+  document_id?: string
+  document_version_id?: string
   evidence_anchor: Record<string, any>
   decision?: { decision_type: string; comment?: string | null } | null
 }
@@ -118,6 +123,10 @@ export function createBatch(payload: { name: string; document_type: string; ocr_
 
 export function getBatch(batchId: string) {
   return http.get<ReviewBatch>(`/review/batches/${batchId}`)
+}
+
+export function listBatches(params?: { page?: number; page_size?: number }) {
+  return http.get<ReviewPage<ReviewBatch>>('/review/batches', { params })
 }
 
 export function addBatchDocument(batchId: string, payload: Omit<ReviewBatchDocument, 'id'>) {

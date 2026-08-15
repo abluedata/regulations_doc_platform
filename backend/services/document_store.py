@@ -653,6 +653,7 @@ def write_version_artifacts(
     ir: dict,
     preview_md: str,
     manifest: dict,
+    evidence_spans: dict | None = None,
 ) -> Path:
     """Atomically create a complete immutable version directory."""
     with _doc_lock(doc_id):
@@ -675,6 +676,11 @@ def write_version_artifacts(
             (temporary_dir / "manifest.json").write_text(
                 json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
             )
+            if evidence_spans is not None:
+                (temporary_dir / "evidence_spans.json").write_text(
+                    json.dumps(evidence_spans, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
             temporary_dir.replace(final_dir)
         except Exception:
             if temporary_dir.exists():

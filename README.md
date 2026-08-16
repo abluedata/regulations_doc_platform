@@ -1,6 +1,19 @@
 # regulations_doc_platform — 合同法规审核 Agent 平台
 
-基于 **Elasticsearch** + **向量检索** + **大语言模型** 的合同/法规条款智能问答系统。
+基于 **Elasticsearch** + **向量检索** + **大语言模型** 的合同/法规**智能审查与问答**平台。
+
+## 两大能力
+
+### 智能审查（一体化控制台）
+
+- **文档上传 → 控制台集成页**：范本选择、条款设置、全量分析在同一页面完成，无分步流程
+- **配置驱动分析**：检测灵敏度 / 分析方案 / 标记模式可调；配置可保存、复用（`configuration_id`）
+- **规则引擎**：条款规则按分类（财务/合规）启用开关，支持自定义规则增改（版本化管理，旧版不可变）
+- **LLM 审查发现**：风险卡内联「原文引用 + 风险原因 + 修改建议」，支持定位 / 接受 / 驳回、导出详细报告
+- **证据高亮**：PDF 字符级定位（span 框 + 字符 refine），无法确认时显式页级降级；缩略图栏红点标记风险页
+- **文档问答助手**：围绕当前审查任务（jobId 域）多轮问答，历史本地持久化
+
+### 智能问答（知识库）
 
 - 将文档（TXT / PDF / DOCX 等）分块后使用 Embedding 向量化，写入 Elasticsearch
 - 混合检索（BM25 + 向量 + RRF）召回相关片段，流式生成回答
@@ -21,6 +34,7 @@ FastAPI (backend/api/ :8002, cwd=backend)
         ├── services/parallel_qa     大上下文并行问答
         ├── services/chat_manager    历史 / 收藏 (.chat_data/)
         ├── services/document_*      上传、解析、分块、入库
+        ├── services/review/         智能审查（规则/配置/分析任务/发现/高亮/问答/建议）
         └── core/                    配置
                 │
                 ├── Elasticsearch
@@ -80,6 +94,50 @@ api  →  services  →  core
 - 历史 / 收藏：`.chat_data/history.json`、`.chat_data/favorites.json`
 - 上传产物：`.data/uploads/`、`.data/docs_index.json`
 - 前端支持文档列表、预览、重析、删除；解析链路可走 MinerU
+
+## 智能审查
+
+### 流程（一体化，无分步）
+
+```
+/review/upload  上传文档（PDF 解析 + 就绪状态轮询）
+        │
+        ▼
+/review/console 智能审查控制台（单页集成，两栏布局）
+   ├── 左栏：PDF 预览（缩略图栏 + 缩放画布 + 证据高亮）
+   └── 右栏选项卡：
+       ├── 审查发现：风险卡（原文引用 / 风险原因 / 修改建议 / 定位 / 接受 / 驳回）+ 导出报告
+       ├── 问答助手：文档问答（多轮历史，本地持久化）
+       └── 审查配置：分析入口（置顶）+ 范本选择 + 条款设置 + 灵敏度 / 方案 / 标记模式
+```
+
+旧路由 `/review/templates`、`/review/rules` 重定向至控制台。无任务进入时默认打开「审查配置」选项卡作为分析入口。
+
+### 核心后端模块（backend/services/review/）
+
+| 模块 | 职责 |
+|---|---|
+| `engine.py` | 规则匹配 + LLM 审查引擎（分析任务编排） |
+| `job_runner.py` | 持久化任务队列：扫描批次 → 逐规则/逐块分析 |
+| `matchers.py` / `prompt.py` | 条款规则匹配器 / 审查提示词 |
+| `evidence.py` / `evidence_spans.py` | 证据提取 / 高亮 span 定位（块级 + 字符级 refine） |
+| `suggestions.py` | LLM 生成修改建议 |
+| `store.py` | 规则版本管理、范本、审查配置持久化 |
+| `qa_answer.py` / `qa_retrieval.py` | 审查任务域问答（子串 IDF 加权检索 + 流式生成） |
+| `assistant.py` | 问答助手会话 |
+| `report.py` / `hitl.py` / `anti_fp.py` | 报告导出 / 人工决策 / 防误报 |
+
+### 主要 API（/api/review/*，共 38 个端点）
+
+| 资源 | 端点 |
+|---|---|
+| 规则 | `POST/GET /rules`、`PUT/DELETE /rules/{rule_version_id}`（版本化） |
+| 范本 | `POST/GET /templates`、`POST /template-versions/{id}/publish` |
+| 配置 | `POST/GET /configurations`、`PUT /configurations/{id}` |
+| 批次 | `POST/GET /batches`、`POST /batches/{id}/documents` |
+| 分析 | `POST /analysis-jobs`（202 异步）、`GET /analysis-jobs/{id}/stream`、`GET /analysis-jobs/{id}/findings` |
+| 决策 | `PUT /findings/{id}/decision`、`PUT /analysis-jobs/{id}/decision`、`POST /decisions/start` |
+| 导出 | `POST /analysis-jobs/{id}/exports` |
 
 ## 快速开始
 
@@ -269,6 +327,14 @@ cd backend
 ../venv/bin/python -m unittest discover -s tests -v
 ```
 
+前端测试（Vitest）：
+
+```bash
+cd frontend
+npm test -- --run          # 57 个测试
+npm exec vue-tsc -- --noEmit  # 类型检查
+```
+
 ## 项目结构
 
 ```
@@ -277,7 +343,7 @@ regulations_doc_platform/
 │   ├── api/                  # HTTP 层
 │   │   ├── main.py           # 应用入口：uvicorn api.main:app（cwd=backend）
 │   │   ├── schemas.py
-│   │   └── routes/           # chat / history / favorites / docs
+│   │   └── routes/           # chat / history / favorites / docs / review
 │   ├── core/                 # 配置
 │   │   └── config.py         # .env + 常量（_ROOT = 项目根）
 │   ├── services/             # 业务服务 + 工具
@@ -289,10 +355,15 @@ regulations_doc_platform/
 │   │   ├── document_store.py # 上传元数据与 IR 本地存储
 │   │   ├── chunk_strategy.py # 文本分块
 │   │   ├── utils.py          # 表格 HTML/Markdown 规范化
-│   │   └── indexer.py        # 离线索引：python -m services.indexer
-│   └── tests/                # unittest
+│   │   ├── indexer.py        # 离线索引：python -m services.indexer
+│   │   └── review/           # 智能审查（见上表：engine/job_runner/evidence/suggestions/…）
+│   └── tests/                # unittest（200 个测试）
 ├── mineru_service/           # MinerU 适配服务（独立进程）
 ├── frontend/                 # Vue3 + Vite + Element Plus
+│   ├── src/views/review/     # ReviewUploadView（上传）/ ReviewConsoleView（集成控制台）
+│   ├── src/components/review/ # RiskCard / ReviewPdfPreview / ReviewAssistant / ReviewConfigPanel / ClauseCard / TemplateCard
+│   ├── src/stores/review.ts  # 审查 Pinia store（范本/条款/配置/分析任务/恢复）
+│   └── tests/                # Vitest（57 个测试）
 ├── scripts/                  # start_es / 验证脚本（.ps1 + .sh 双平台）
 ├── docs/                     # 示例文档 / design/ 设计文档
 ├── .data/                    # 运行时数据（上传、日志；gitignore）

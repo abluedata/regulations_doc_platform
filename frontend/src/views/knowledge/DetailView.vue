@@ -11,10 +11,10 @@ import {
   Star,
   UserFilled,
 } from '@element-plus/icons-vue'
-import { getHistoryDetail, deleteHistory } from '@/api/history'
-import { addFavorite } from '@/api/favorites'
+import { getHistoryDetail, deleteHistory } from '@/api/knowledge/history'
+import { addFavorite } from '@/api/knowledge/favorites'
 import type { SessionRecord } from '@/types'
-import SafeMarkdown from '@/components/SafeMarkdown.vue'
+import SafeMarkdown from '@/components/common/SafeMarkdown.vue'
 
 const route = useRoute()
 const router = useRouter()

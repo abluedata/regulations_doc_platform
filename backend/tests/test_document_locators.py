@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from mineru_service.adapter import _content_list_to_blocks
-from services.document_pipeline import (
+from services.knowledge.document_pipeline import (
     _normalize_ir,
     _parse_docx,
     _parse_pdf_pdfplumber,

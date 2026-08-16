@@ -79,7 +79,7 @@ app.include_router(review.router, prefix="/api")
 
 
 def reconcile_document_publications() -> None:
-    from services import document_store
+    from services.knowledge import document_store
 
     document_store.reconcile_pending_publications()
     document_store.reconcile_pending_deletions()
@@ -89,7 +89,7 @@ def backfill_evidence_spans() -> None:
     """启动时为已 ready 的存量文档懒生成 evidence_spans.json（幂等）。"""
     import logging
 
-    from services import evidence_spans
+    from services.common import evidence_spans
 
     try:
         results = evidence_spans.backfill_all_ready_docs()

@@ -2,8 +2,8 @@
 
 import unittest
 
-from services.utils import promote_raw_blocks
-from services.document_pipeline import _normalize_ir, structure_aware_chunk, _run_pipeline
+from services.common.utils import promote_raw_blocks
+from services.knowledge.document_pipeline import _normalize_ir, structure_aware_chunk, _run_pipeline
 
 # Reused SAMPLE_HTML from test_table_utils (nested <p> + "27个月本人工资")
 SAMPLE_HTML = (

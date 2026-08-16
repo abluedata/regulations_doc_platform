@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { ChatDotRound, Delete, Promotion } from '@element-plus/icons-vue'
-import SafeMarkdown from '@/components/SafeMarkdown.vue'
+import SafeMarkdown from '@/components/common/SafeMarkdown.vue'
 import type { ReviewRisk } from '@/types'
 import { useReviewStore } from '@/stores/review'
 import { getActivePinia } from 'pinia'
-import { createConversation, streamReviewAssistant } from '@/api/review'
-import type { ReviewCitation } from '@/api/review'
+import { createConversation, streamReviewAssistant } from '@/api/review/review'
+import type { ReviewCitation } from '@/api/review/review'
 
 type AssistantRole = 'user' | 'assistant'
 

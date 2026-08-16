@@ -799,7 +799,7 @@ def reconcile_pending_deletions() -> None:
             for doc_id, tombstone in _deletion_tombstones_locked().items()
             if tombstone["phase"] != "complete"
         ]
-    from services.document_pipeline import delete_doc_from_index
+    from services.knowledge.document_pipeline import delete_doc_from_index
 
     for doc_id in sorted(pending):
         delete_doc(doc_id)

@@ -1,4 +1,4 @@
-import http from './http'
+import http from '../http'
 import type { ListResponse, SessionRecord } from '@/types'
 
 export function listHistory(params?: {

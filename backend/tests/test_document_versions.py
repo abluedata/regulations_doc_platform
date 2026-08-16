@@ -14,8 +14,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from services import document_pipeline as pipeline
-from services import document_store as store
+from services.knowledge import document_pipeline as pipeline
+from services.knowledge import document_store as store
 
 
 class TestDocumentVersions(unittest.TestCase):
@@ -810,7 +810,7 @@ class TestDocumentVersions(unittest.TestCase):
         self.assertEqual("complete", tombstone.get("phase"))
 
     def test_search_hides_staged_chunks_until_version_publication(self):
-        from services import search
+        from services.knowledge import search
 
         source = self._create_doc()
         digest = store.source_sha256(source)
@@ -1169,7 +1169,7 @@ class TestDocumentVersions(unittest.TestCase):
         self.assertEqual("legacy preview", store.load_preview_md("doc-version-test"))
 
     def test_visibility_query_supports_existing_text_mappings_and_pre_key_chunks(self):
-        from services import search
+        from services.knowledge import search
 
         doc_id = "doc-version-test"
         active_id = "a" * 64
@@ -1258,7 +1258,7 @@ class TestDocumentVersions(unittest.TestCase):
         self.assertEqual(["active pre-key"], [item["content"] for item in results])
 
     def test_visibility_filter_is_bounded_for_more_than_1024_active_documents(self):
-        from services import search
+        from services.knowledge import search
 
         active_keys = [f"doc-{i}:{i:064x}" for i in range(1100)]
         doc_ids = [f"doc-{i}" for i in range(1100)]
@@ -1316,7 +1316,7 @@ class TestDocumentVersions(unittest.TestCase):
         ])
 
     def test_visibility_mapping_or_backfill_failure_fails_closed(self):
-        from services import search
+        from services.knowledge import search
 
         class FailingElasticsearch:
             def __init__(self, failure_mode):
@@ -1452,7 +1452,7 @@ class TestDocumentVersions(unittest.TestCase):
                 self.assertNotIn("indexed_version_id", persisted)
 
     def test_malformed_visibility_index_fails_closed(self):
-        from services import search
+        from services.knowledge import search
 
         self._create_doc()
         store.INDEX_FILE.write_text("{malformed", encoding="utf-8")
@@ -1707,7 +1707,7 @@ class TestDocumentVersions(unittest.TestCase):
         self.assertFalse(bulk_called)
 
     def test_object_response_partial_backfill_does_not_set_ready_and_retries(self):
-        from services import search
+        from services.knowledge import search
 
         class ObjectResponse:
             def __init__(self, body):
@@ -1755,7 +1755,7 @@ class TestDocumentVersions(unittest.TestCase):
         self.assertEqual(2, fake_es.calls)
 
     def test_malformed_backfill_counters_do_not_set_ready(self):
-        from services import search
+        from services.knowledge import search
 
         class FakeIndices:
             def get_mapping(self, *, index):
@@ -1788,7 +1788,7 @@ class TestDocumentVersions(unittest.TestCase):
                     self.assertFalse(search._visibility_v2_ready)
 
     def test_legacy_filter_excludes_deleted_residual_chunks(self):
-        from services import search
+        from services.knowledge import search
 
         self._create_doc(doc_id="kept-legacy")
         captured = []
@@ -1816,7 +1816,7 @@ class TestDocumentVersions(unittest.TestCase):
         self.assertIn("kept-legacy", json.dumps(captured[0]))
 
     def test_valid_empty_installation_searches_match_none(self):
-        from services import search
+        from services.knowledge import search
 
         store.INDEX_FILE.write_text("[]", encoding="utf-8")
         captured = []

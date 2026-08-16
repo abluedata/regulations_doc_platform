@@ -6,7 +6,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import ReviewUploadView from './ReviewUploadView.vue'
 import { useReviewStore } from '@/stores/review'
 
-vi.mock('@/api/review', () => ({
+vi.mock('@/api/review/review', () => ({
   listRules: vi.fn(),
   listTemplates: vi.fn(),
   createRule: vi.fn(),
@@ -23,12 +23,12 @@ vi.mock('@/api/review', () => ({
   createExport: vi.fn(),
 }))
 
-vi.mock('@/api/docs', () => ({
+vi.mock('@/api/knowledge/docs', () => ({
   uploadDoc: vi.fn(),
 }))
 
-import * as reviewApi from '@/api/review'
-import * as docsApi from '@/api/docs'
+import * as reviewApi from '@/api/review/review'
+import * as docsApi from '@/api/knowledge/docs'
 
 describe('ReviewUploadView', () => {
   beforeEach(() => {

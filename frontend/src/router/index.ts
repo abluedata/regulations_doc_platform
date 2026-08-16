@@ -6,37 +6,37 @@ const router = createRouter({
     {
       path: '/',
       name: 'chat',
-      component: () => import('@/views/ChatView.vue'),
+      component: () => import('@/views/knowledge/ChatView.vue'),
       meta: { title: '智能问答' },
     },
     {
       path: '/history',
       name: 'history',
-      component: () => import('@/views/HistoryView.vue'),
+      component: () => import('@/views/knowledge/HistoryView.vue'),
       meta: { title: '历史记录' },
     },
     {
       path: '/favorites',
       name: 'favorites',
-      component: () => import('@/views/FavoritesView.vue'),
+      component: () => import('@/views/knowledge/FavoritesView.vue'),
       meta: { title: '收藏' },
     },
     {
       path: '/detail/:id?',
       name: 'detail',
-      component: () => import('@/views/DetailView.vue'),
+      component: () => import('@/views/knowledge/DetailView.vue'),
       meta: { title: '详情管理' },
     },
     {
       path: '/docs',
       name: 'docs',
-      component: () => import('@/views/DocsListView.vue'),
+      component: () => import('@/views/knowledge/DocsListView.vue'),
       meta: { title: '知识库' },
     },
     {
       path: '/docs/:id',
       name: 'doc-preview',
-      component: () => import('@/views/DocPreviewView.vue'),
+      component: () => import('@/views/knowledge/DocPreviewView.vue'),
       meta: { title: '文档预览' },
     },
     {

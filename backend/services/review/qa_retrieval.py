@@ -10,8 +10,8 @@ import re
 from typing import Any, Callable
 from uuid import uuid4
 
-from services.document_store import UPLOADS_DIR
-from services.search import DocumentScope, search_document
+from services.knowledge.document_store import UPLOADS_DIR
+from services.knowledge.search import DocumentScope, search_document
 
 
 class CitationValidationError(ValueError):

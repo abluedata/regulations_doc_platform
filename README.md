@@ -44,11 +44,16 @@ FastAPI (backend/api/ :8002, cwd=backend)
 MinerU (:8001) + adapter (:8003)  ← 文档解析（一键启动脚本拉起）
 ```
 
-代码分层依赖方向（单向）：
+代码分层依赖方向（单向，无环）：
 
 ```
-api  →  services  →  core
+api ──→ services/knowledge ──→ services/common ──→ core
+api ──→ services/review ──→ services/knowledge + services/common ──→ core
 ```
+
+- `common/`：被知识库与审查两域共用的工具（含证据 span 提取）
+- `review → knowledge` 为刻意单向依赖：审查基于知识库文档检索与上传产物
+- 架构规划详见 `docs/design/plans/2026-08-16-directory-architecture-refactor.md`
 
 ## 技术栈
 
@@ -218,7 +223,7 @@ cp .env.example .env
 # 将 .txt / .pdf 放入 docs/
 # cwd=backend，使 api/services/core 顶层包可 import
 cd backend
-python -m services.indexer
+python -m services.knowledge.indexer
 ```
 
 流程：扫描 `docs/` → 分块 → Embedding → 写入 ES 索引。
@@ -311,7 +316,7 @@ npm run dev
 
 开发时 Vite 将 `/api` 代理到 `http://127.0.0.1:8002`。
 
-若索引不存在，先执行（cwd=backend）`python -m services.indexer` 或通过前端上传入库。
+若索引不存在，先执行（cwd=backend）`python -m services.knowledge.indexer` 或通过前端上传入库。
 
 ### 6. 运行测试
 
@@ -340,29 +345,36 @@ npm exec vue-tsc -- --noEmit  # 类型检查
 ```
 regulations_doc_platform/
 ├── backend/                  # 后端（FastAPI + 业务）
-│   ├── api/                  # HTTP 层
+│   ├── api/                  # HTTP 层（薄，仅路由）
 │   │   ├── main.py           # 应用入口：uvicorn api.main:app（cwd=backend）
-│   │   ├── schemas.py
-│   │   └── routes/           # chat / history / favorites / docs / review
-│   ├── core/                 # 配置
-│   │   └── config.py         # .env + 常量（_ROOT = 项目根）
-│   ├── services/             # 业务服务 + 工具
-│   │   ├── qa_service.py     # 流式问答
-│   │   ├── parallel_qa.py    # 大上下文并行问答
-│   │   ├── search.py         # 混合检索 + 路由
-│   │   ├── chat_manager.py   # 历史 / 收藏
-│   │   ├── document_pipeline.py  # 解析 → 分块 → 入库
-│   │   ├── document_store.py # 上传元数据与 IR 本地存储
-│   │   ├── chunk_strategy.py # 文本分块
-│   │   ├── utils.py          # 表格 HTML/Markdown 规范化
-│   │   ├── indexer.py        # 离线索引：python -m services.indexer
-│   │   └── review/           # 智能审查（见上表：engine/job_runner/evidence/suggestions/…）
+│   │   ├── schemas.py        # 知识库域 schema
+│   │   ├── review_schemas.py # 审查域 schema
+│   │   ├── middleware/       # 公共中间件（认证 / 错误 / 日志）
+│   │   └── routes/           # chat / docs / history / favorites（知识库）+ review（审查）
+│   ├── core/                 # 公共核心：config / http_client / audit / metrics / log_redactor
+│   ├── services/             # 业务服务（三域分层）
+│   │   ├── common/           # 公共目录（跨域复用）
+│   │   │   ├── utils.py      # 表格 HTML/Markdown 规范化
+│   │   │   ├── visibility.py # 索引可见性映射
+│   │   │   └── evidence_spans.py  # 证据 span 提取/定位
+│   │   ├── knowledge/        # 知识库域（问答 / 检索 / 文档 / 历史收藏）
+│   │   │   ├── qa_service.py / parallel_qa.py / search.py / chat_manager.py
+│   │   │   ├── document_pipeline.py / document_store.py / chunk_strategy.py
+│   │   │   └── indexer.py    # 离线索引：python -m services.knowledge.indexer
+│   │   └── review/           # 审查域（engine / job_runner / matchers / evidence /
+│   │                         #  suggestions / store / assistant / qa_answer / qa_retrieval / …）
+│   ├── scripts/              # 后端脚本（backfill_evidence_spans.py 等）
 │   └── tests/                # unittest（200 个测试）
 ├── mineru_service/           # MinerU 适配服务（独立进程）
 ├── frontend/                 # Vue3 + Vite + Element Plus
-│   ├── src/views/review/     # ReviewUploadView（上传）/ ReviewConsoleView（集成控制台）
-│   ├── src/components/review/ # RiskCard / ReviewPdfPreview / ReviewAssistant / ReviewConfigPanel / ClauseCard / TemplateCard
-│   ├── src/stores/review.ts  # 审查 Pinia store（范本/条款/配置/分析任务/恢复）
+│   ├── src/api/              # HTTP 客户端：http.ts（公共）+ knowledge/ + review/
+│   ├── src/views/knowledge/  # 知识库视图（Chat / History / Favorites / DocsList / DocPreview / Detail）
+│   ├── src/views/review/     # 审查视图（ReviewUploadView / ReviewConsoleView）
+│   ├── src/components/common/  # 公共组件（SafeMarkdown）
+│   ├── src/components/knowledge/ # 知识库组件（ChatInput / ChatMessage / SessionTable / …）
+│   ├── src/components/review/   # 审查组件（RiskCard / ReviewPdfPreview / ReviewAssistant / ReviewConfigPanel / …）
+│   ├── src/stores/           # chat.ts（知识库）/ review.ts（审查）
+│   ├── src/types/            # index.ts（公共+知识库）/ review.ts（审查域，由 index re-export）
 │   └── tests/                # Vitest（57 个测试）
 ├── scripts/                  # start_es / 验证脚本（.ps1 + .sh 双平台）
 ├── docs/                     # 示例文档 / design/ 设计文档

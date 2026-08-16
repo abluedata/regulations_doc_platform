@@ -12,7 +12,7 @@ import {
   View,
 } from '@element-plus/icons-vue'
 import type { DocRecord } from '@/types'
-import { deleteDoc, listDocs, reparseDoc, uploadDoc } from '@/api/docs'
+import { deleteDoc, listDocs, reparseDoc, uploadDoc } from '@/api/knowledge/docs'
 
 const router = useRouter()
 const rows = ref<DocRecord[]>([])

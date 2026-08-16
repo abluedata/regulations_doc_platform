@@ -10,8 +10,8 @@ const { createConversation, streamReviewAssistant } = vi.hoisted(() => ({
   streamReviewAssistant: vi.fn(),
 }))
 
-vi.mock('@/api/review', async (importOriginal) => ({
-  ...await importOriginal<typeof import('@/api/review')>(),
+vi.mock('@/api/review/review', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/api/review/review')>(),
   createConversation,
   streamReviewAssistant,
 }))

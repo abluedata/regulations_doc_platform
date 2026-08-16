@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import * as reviewApi from '@/api/review'
-import { getDoc, uploadDoc } from '@/api/docs'
+import * as reviewApi from '@/api/review/review'
+import { getDoc, uploadDoc } from '@/api/knowledge/docs'
 import type { ReviewClause, ReviewFile, ReviewFileStatus, ReviewRisk, ReviewTemplate, ReviewAnalysisStatus } from '@/types'
 
 type LoadState = 'idle' | 'loading' | 'ready' | 'empty' | 'error'

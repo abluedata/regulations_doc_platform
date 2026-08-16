@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Cpu, UserFilled } from '@element-plus/icons-vue'
-import SafeMarkdown from '@/components/SafeMarkdown.vue'
+import SafeMarkdown from '@/components/common/SafeMarkdown.vue'
 
 const props = defineProps<{
   role: 'user' | 'assistant'

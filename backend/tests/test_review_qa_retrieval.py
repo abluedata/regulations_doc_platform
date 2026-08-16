@@ -12,7 +12,7 @@ from services.review.qa_retrieval import (
     build_citation,
     retrieve_evidence,
 )
-from services.search import search_document
+from services.knowledge.search import search_document
 
 
 class FakeEs:
@@ -31,8 +31,8 @@ def test_search_document_filters_bm25_and_knn_by_immutable_scope():
         {"_source": {"doc_id": "doc-b", "document_version_id": "v-b", "chunk_id": 2, "content": "污染结果"}},
     ]
     es = FakeEs(hits)
-    with mock.patch("services.search.get_es", return_value=es), mock.patch(
-        "services.search.get_embeddings", return_value=[[0.1, 0.2]]
+    with mock.patch("services.knowledge.search.get_es", return_value=es), mock.patch(
+        "services.knowledge.search.get_embeddings", return_value=[[0.1, 0.2]]
     ):
         results = search_document("付款", scope=DocumentScope("doc-a", "v-a"), k=3)
 

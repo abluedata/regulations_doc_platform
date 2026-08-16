@@ -28,8 +28,8 @@ from api.review_schemas import (
     UpdateBatchRequest,
 )
 from core.config import DATA_ROOT
-from services import document_store
-from services import evidence_spans
+from services.knowledge import document_store
+from services.common import evidence_spans
 from services.review.assistant import ReviewAssistant
 from services.review.hitl import HitlDecisionMachine
 from services.review.job_runner import PersistentReviewQueue

@@ -16,8 +16,8 @@ BACKEND = Path(__file__).resolve().parents[1]
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
-from services import document_store as store
-from services import evidence_spans as evidence
+from services.knowledge import document_store as store
+from services.common import evidence_spans as evidence
 
 VALID_VERSION_ID = "a" * 64
 OTHER_VERSION_ID = "b" * 64

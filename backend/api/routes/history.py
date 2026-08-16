@@ -9,7 +9,7 @@ from api.schemas import (
     HistoryListResponse,
     SimpleMessageResponse,
 )
-from services.chat_manager import (
+from services.knowledge.chat_manager import (
     add_favorite,
     clear_all_history,
     count_history,

@@ -2,9 +2,9 @@
 import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, RefreshRight } from '@element-plus/icons-vue'
-import SessionTable from '@/components/SessionTable.vue'
+import SessionTable from '@/components/knowledge/SessionTable.vue'
 import type { SessionRecord } from '@/types'
-import { batchDeleteFavorites, listFavorites } from '@/api/favorites'
+import { batchDeleteFavorites, listFavorites } from '@/api/knowledge/favorites'
 
 const rows = ref<SessionRecord[]>([])
 const loading = ref(false)

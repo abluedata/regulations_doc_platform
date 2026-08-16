@@ -3,25 +3,25 @@ import ElementPlus from 'element-plus'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter, type Router } from 'vue-router'
-import ChatInput from '@/components/ChatInput.vue'
-import SessionTable from '@/components/SessionTable.vue'
+import ChatInput from '@/components/knowledge/ChatInput.vue'
+import SessionTable from '@/components/knowledge/SessionTable.vue'
 import { useChatStore } from '@/stores/chat'
 import type { SessionRecord } from '@/types'
-import ChatView from './ChatView.vue'
-import DetailView from './DetailView.vue'
-import DocPreviewView from './DocPreviewView.vue'
-import DocsListView from './DocsListView.vue'
-import FavoritesView from './FavoritesView.vue'
-import HistoryView from './HistoryView.vue'
+import ChatView from './knowledge/ChatView.vue'
+import DetailView from './knowledge/DetailView.vue'
+import DocPreviewView from './knowledge/DocPreviewView.vue'
+import DocsListView from './knowledge/DocsListView.vue'
+import FavoritesView from './knowledge/FavoritesView.vue'
+import HistoryView from './knowledge/HistoryView.vue'
 
-vi.mock('@/api/chat', () => ({
+vi.mock('@/api/knowledge/chat', () => ({
   fetchExamples: vi.fn().mockResolvedValue({ data: { examples: [] } }),
   saveSession: vi.fn().mockResolvedValue({ data: { success: true } }),
   stopChat: vi.fn().mockResolvedValue({ data: { success: true } }),
   streamChat: vi.fn().mockResolvedValue(undefined),
 }))
 
-vi.mock('@/api/docs', () => ({
+vi.mock('@/api/knowledge/docs', () => ({
   listDocs: vi.fn().mockResolvedValue({ data: { items: [], total: 0 } }),
   getDocPreview: vi.fn().mockResolvedValue({
     data: {
@@ -52,7 +52,7 @@ vi.mock('@/api/docs', () => ({
   uploadDoc: vi.fn().mockResolvedValue({ data: { message: '已上传' } }),
 }))
 
-vi.mock('@/api/history', () => ({
+vi.mock('@/api/knowledge/history', () => ({
   listHistory: vi.fn().mockResolvedValue({ data: { items: [], total: 0 } }),
   getHistoryDetail: vi.fn().mockResolvedValue({
     data: {
@@ -71,7 +71,7 @@ vi.mock('@/api/history', () => ({
   batchFavoriteHistory: vi.fn().mockResolvedValue({ data: { ok: 1, message: '已收藏' } }),
 }))
 
-vi.mock('@/api/favorites', () => ({
+vi.mock('@/api/knowledge/favorites', () => ({
   listFavorites: vi.fn().mockResolvedValue({ data: { items: [], total: 0 } }),
   addFavorite: vi.fn().mockResolvedValue({ data: { success: true } }),
   batchDeleteFavorites: vi.fn().mockResolvedValue({ data: { ok: 1, message: '已删除' } }),

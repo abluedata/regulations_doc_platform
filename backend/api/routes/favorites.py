@@ -9,7 +9,7 @@ from api.schemas import (
     FavoritesListResponse,
     SimpleMessageResponse,
 )
-from services.chat_manager import add_favorite, list_favorites_filtered, remove_favorite
+from services.knowledge.chat_manager import add_favorite, list_favorites_filtered, remove_favorite
 
 router = APIRouter(prefix="/favorites", tags=["favorites"])
 

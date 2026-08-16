@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useReviewStore } from './review'
 
-vi.mock('@/api/review', () => ({
+vi.mock('@/api/review/review', () => ({
   listRules: vi.fn(),
   listTemplates: vi.fn(),
   createRule: vi.fn(),
@@ -24,12 +24,12 @@ vi.mock('@/api/review', () => ({
   getBatch: vi.fn(),
 }))
 
-vi.mock('@/api/docs', () => ({
+vi.mock('@/api/knowledge/docs', () => ({
   uploadDoc: vi.fn(),
 }))
 
-import * as reviewApi from '@/api/review'
-import * as docsApi from '@/api/docs'
+import * as reviewApi from '@/api/review/review'
+import * as docsApi from '@/api/knowledge/docs'
 
 describe('review store', () => {
   beforeEach(() => {

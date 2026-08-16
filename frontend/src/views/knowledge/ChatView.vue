@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, nextTick, ref, watch } from 'vue'
 import { useChatStore } from '@/stores/chat'
-import ChatMessage from '@/components/ChatMessage.vue'
-import ChatInput from '@/components/ChatInput.vue'
-import ExampleChips from '@/components/ExampleChips.vue'
+import ChatMessage from '@/components/knowledge/ChatMessage.vue'
+import ChatInput from '@/components/knowledge/ChatInput.vue'
+import ExampleChips from '@/components/knowledge/ExampleChips.vue'
 import { ChatDotRound, Plus } from '@element-plus/icons-vue'
 
 const chat = useChatStore()

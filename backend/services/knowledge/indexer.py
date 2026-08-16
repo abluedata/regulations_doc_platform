@@ -25,8 +25,8 @@ from core.config import (
     ES_USER,
     INDEX_NAME,
 )
-from services.chunk_strategy import chunk_documents
-from services.utils import truncate_for_embedding
+from services.knowledge.chunk_strategy import chunk_documents
+from services.common.utils import truncate_for_embedding
 from elasticsearch import Elasticsearch
 from core.http_client import elasticsearch_client, requests_session
 

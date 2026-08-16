@@ -15,7 +15,7 @@ vi.mock('pdfjs-dist', () => ({
   GlobalWorkerOptions: {},
 }))
 
-vi.mock('@/api/review', () => ({
+vi.mock('@/api/review/review', () => ({
   listRules: vi.fn(),
   listTemplates: vi.fn(),
   createRule: vi.fn(),
@@ -33,11 +33,11 @@ vi.mock('@/api/review', () => ({
   downloadExportArtifact: vi.fn(),
 }))
 
-vi.mock('@/api/docs', () => ({
+vi.mock('@/api/knowledge/docs', () => ({
   uploadDoc: vi.fn(),
 }))
 
-import * as reviewApi from '@/api/review'
+import * as reviewApi from '@/api/review/review'
 
 const evidenceAnchor = {
   kind: 'pdf',

@@ -11,7 +11,7 @@ import ReviewConfigPanel from '@/components/review/ReviewConfigPanel.vue'
 import ReviewAssistant from '@/components/review/ReviewAssistant.vue'
 import ReviewPdfPreview from '@/components/review/ReviewPdfPreview.vue'
 import { useReviewStore } from '@/stores/review'
-import { downloadExportArtifact, type ReviewCitation } from '@/api/review'
+import { downloadExportArtifact, type ReviewCitation } from '@/api/review/review'
 import type { ReviewHighlightRect, ReviewRisk } from '@/types'
 
 const review = useReviewStore()

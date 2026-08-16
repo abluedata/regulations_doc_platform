@@ -14,8 +14,8 @@ from api.schemas import (
     DocPreviewResponse,
     SimpleMessageResponse,
 )
-from services.document_pipeline import delete_doc_from_index, enqueue_parse
-from services.document_store import (
+from services.knowledge.document_pipeline import delete_doc_from_index, enqueue_parse
+from services.knowledge.document_store import (
     ALLOWED_EXT,
     MAX_UPLOAD_BYTES,
     create_doc_record,

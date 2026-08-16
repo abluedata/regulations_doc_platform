@@ -1,4 +1,4 @@
-import http from './http'
+import http from '../http'
 import type { DocPreview, DocRecord, ListResponse } from '@/types'
 
 export function listDocs(params?: {

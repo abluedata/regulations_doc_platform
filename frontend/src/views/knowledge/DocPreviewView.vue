@@ -4,8 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, ChatDotRound, Delete, RefreshRight } from '@element-plus/icons-vue'
 import type { DocPreview } from '@/types'
-import { deleteDoc, getDocPreview, reparseDoc } from '@/api/docs'
-import SafeMarkdown from '@/components/SafeMarkdown.vue'
+import { deleteDoc, getDocPreview, reparseDoc } from '@/api/knowledge/docs'
+import SafeMarkdown from '@/components/common/SafeMarkdown.vue'
 
 const route = useRoute()
 const router = useRouter()

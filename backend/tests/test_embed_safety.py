@@ -5,7 +5,7 @@
 导致 144 页 tender_file.pdf 这类长文档 embedding 失败、status=failed。
 
 覆盖：
-  1. services.utils.truncate_for_embedding 截断规则；
+  1. services.common.utils.truncate_for_embedding 截断规则；
   2. document_pipeline._embed 请求前截断兜底（保留标题头部）；
   3. indexer.get_embeddings 请求前截断兜底；
   4. 分块配置与安全阈值的常量不变量（CHUNK_SIZE < EMBED_MAX_CHARS < 实测失败点）。
@@ -16,7 +16,7 @@ import unittest
 from unittest import mock
 
 from core import config as core_config
-from services.utils import truncate_for_embedding
+from services.common.utils import truncate_for_embedding
 
 
 # ─── truncate_for_embedding 单元测试 ─────────────────────────
@@ -143,7 +143,7 @@ class TestEmbedRequestTruncation(unittest.TestCase):
         return body
 
     def test_pipeline_embed_truncates_oversized_chunk_before_request(self):
-        from services import document_pipeline as pipeline
+        from services.knowledge import document_pipeline as pipeline
 
         text = self._long_text()
         self.assertGreater(len(text), core_config.EMBED_MAX_CHARS)
@@ -165,7 +165,7 @@ class TestEmbedRequestTruncation(unittest.TestCase):
         self.assertEqual(sent_inputs[1], "短文本")
 
     def test_pipeline_embed_multiple_batches_all_safe(self):
-        from services import document_pipeline as pipeline
+        from services.knowledge import document_pipeline as pipeline
 
         texts = [self._long_text(header=bool(i % 2)) for i in range(230)]
         captured = []
@@ -180,7 +180,7 @@ class TestEmbedRequestTruncation(unittest.TestCase):
                 self.assertLessEqual(len(t), core_config.EMBED_MAX_CHARS)
 
     def test_indexer_get_embeddings_truncates_before_request(self):
-        from services import indexer
+        from services.knowledge import indexer
 
         text = self._long_text()
         self.assertGreater(len(text), core_config.EMBED_MAX_CHARS)
@@ -206,7 +206,7 @@ class TestEmbedRequestTruncation(unittest.TestCase):
 class TestOversizedChunkEndToEndSafety(unittest.TestCase):
     def test_giant_table_chunk_is_truncated_before_embed_request(self):
         """构造单行超长表格（超过 2*CHUNK_SIZE 与安全阈值），验证 _embed 兜底。"""
-        from services.document_pipeline import (
+        from services.knowledge.document_pipeline import (
             _embed,
             _normalize_ir,
             structure_aware_chunk,
@@ -240,7 +240,7 @@ class TestOversizedChunkEndToEndSafety(unittest.TestCase):
         )
 
         captured = []
-        import services.document_pipeline as pipeline
+        import services.knowledge.document_pipeline as pipeline
         with mock.patch.object(pipeline, "EMBED_API_KEY", "sk-test"):
             with _fake_requests_session(captured):
                 embeddings = _embed([c["content"] for c in chunks])

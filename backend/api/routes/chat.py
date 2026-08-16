@@ -17,8 +17,8 @@ from api.schemas import (
     SessionIdResponse,
     StopRequest,
 )
-from services.chat_manager import save_history_session
-from services.qa_service import EXAMPLES, stream_answer
+from services.knowledge.chat_manager import save_history_session
+from services.knowledge.qa_service import EXAMPLES, stream_answer
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 

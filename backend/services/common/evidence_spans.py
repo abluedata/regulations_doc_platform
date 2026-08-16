@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from core.config import DATA_ROOT
-from services.document_store import (
+from services.knowledge.document_store import (
     UPLOADS_DIR,
     list_docs,
     load_ir,

@@ -37,7 +37,7 @@ def _safe_log(msg: str) -> None:
 
 def parallel_search(query: str, k: int = None) -> list[dict]:
     """获取更多候选 chunks（单次搜索 + 更大 K）"""
-    from services.search import search_local
+    from services.knowledge.search import search_local
     k = k or PARALLEL_SEARCH_K
     return search_local(query, k)
 
@@ -111,7 +111,7 @@ def parallel_qa(query: str) -> dict:
         final_answer = resp.json()["choices"][0]["message"]["content"]
     except Exception as e:
         # 流式降级
-        from services.qa_service import ask_llm_stream
+        from services.knowledge.qa_service import ask_llm_stream
 
         final_answer = ""
         for token in ask_llm_stream(query, context):

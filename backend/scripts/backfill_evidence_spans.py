@@ -16,7 +16,7 @@ BACKEND = Path(__file__).resolve().parent
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
-from services import evidence_spans  # noqa: E402
+from services.common import evidence_spans  # noqa: E402
 
 
 def main() -> int:

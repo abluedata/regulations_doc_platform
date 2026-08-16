@@ -2,14 +2,14 @@
 import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Delete, RefreshRight, Search, Star } from '@element-plus/icons-vue'
-import SessionTable from '@/components/SessionTable.vue'
+import SessionTable from '@/components/knowledge/SessionTable.vue'
 import type { SessionRecord } from '@/types'
 import {
   batchDeleteHistory,
   batchFavoriteHistory,
   clearHistory,
   listHistory,
-} from '@/api/history'
+} from '@/api/knowledge/history'
 
 const rows = ref<SessionRecord[]>([])
 const total = ref(0)

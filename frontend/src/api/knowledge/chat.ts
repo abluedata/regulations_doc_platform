@@ -1,4 +1,4 @@
-import http from './http'
+import http from '../http'
 import type { ChatMessage } from '@/types'
 
 export function fetchExamples() {

@@ -28,6 +28,18 @@ def httpx_request(method: str, url: str, **kwargs: Any) -> httpx.Response:
         return client.request(method, url, **kwargs)
 
 
+def httpx_stream_lines(method: str, url: str, **kwargs: Any):
+    """Stream an HTTP response as decoded text lines (SSE style).
+
+    Fail-closed like httpx_request: TLS verification cannot be disabled and
+    non-2xx responses raise before any line is yielded.
+    """
+    with httpx_client() as client:
+        with client.stream(method, url, **kwargs) as response:
+            response.raise_for_status()
+            yield from response.iter_lines()
+
+
 def requests_session() -> requests.Session:
     session = requests.Session()
     session.verify = tls_verify()

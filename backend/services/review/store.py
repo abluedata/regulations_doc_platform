@@ -10,12 +10,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import hashlib
 import json
-import os
 from pathlib import Path
-import shutil
-import tempfile
+import threading
 from typing import Any, Iterable, Mapping
 from uuid import uuid4
+from sqlalchemy import create_engine, event, text
+from sqlalchemy.pool import NullPool
 
 
 RUNNING_STATUSES = {"parsing", "running"}
@@ -47,50 +47,67 @@ def stable_hash(payload: Any) -> str:
 
 
 class ReviewStore:
-    """Atomic JSON store used by the review API and runner."""
+    """SQLite-backed compatibility store retaining the legacy public API."""
 
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root)
-        self.root.mkdir(parents=True, exist_ok=True)
-        for collection in COLLECTIONS:
-            (self.root / collection).mkdir(parents=True, exist_ok=True)
+        if self.root.suffix in {".db", ".sqlite", ".sqlite3"}:
+            db_path = self.root
+        else:
+            db_path = self.root / "platform.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.engine = create_engine(
+            f"sqlite:///{db_path}",
+            connect_args={"check_same_thread": False, "timeout": 5},
+            poolclass=NullPool,
+            future=True,
+        )
+        @event.listens_for(self.engine, "connect")
+        def _configure(connection, _):
+            cursor = connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA busy_timeout=5000")
+            cursor.close()
+        with self.engine.begin() as connection:
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS review_records (
+                    collection TEXT NOT NULL,
+                    id TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (collection, id)
+                )
+            """))
+        self._io_lock = threading.RLock()
 
     def startup_drift_scan(self) -> dict[str, list[str]]:
         requeued: list[str] = []
         quarantined: list[str] = []
-        for path in sorted(self.root.rglob("*.json")):
-            if "quarantine" in path.relative_to(self.root).parts:
-                continue
-            try:
-                record = self._read_path(path)
-            except json.JSONDecodeError:
-                rel = path.relative_to(self.root).as_posix()
-                quarantined.append(rel)
-                dest = self.root / "quarantine" / rel.replace("/", "__")
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(str(path), str(dest))
-                continue
-            if path.parent.name == "jobs" and record.get("status") in RUNNING_STATUSES:
+        records, _ = self.list("jobs", page=1, page_size=100000)
+        for record in records:
+            if record.get("status") in RUNNING_STATUSES:
                 record["status"] = "queued"
                 record["updated_at"] = utc_now()
                 record.setdefault("errors", []).append(
                     {"code": "startup_recovered", "message": "running job recovered to queued", "retryable": True}
                 )
-                self._write_path(path, record)
-                requeued.append(str(record.get("id") or path.stem))
+                self.put("jobs", record)
+                requeued.append(str(record.get("id") or ""))
         return {"requeued_jobs": requeued, "quarantined_files": quarantined}
 
     # Generic records -----------------------------------------------------
 
     def get(self, collection: str, record_id: str) -> dict[str, Any] | None:
-        path = self._path(collection, record_id)
-        if not path.exists():
-            return None
-        return self._read_path(path)
+        with self.engine.connect() as connection:
+            row = connection.execute(text("SELECT payload FROM review_records WHERE collection=:collection AND id=:id"), {"collection": collection, "id": str(record_id)}).first()
+        return json.loads(row[0]) if row else None
 
     def list(self, collection: str, *, page: int = 1, page_size: int = 50) -> tuple[list[dict[str, Any]], int]:
-        records = [self._read_path(path) for path in sorted((self.root / collection).glob("*.json"))]
-        records.sort(key=lambda item: str(item.get("created_at", "")), reverse=True)
+        with self.engine.connect() as connection:
+            rows = connection.execute(text("SELECT payload FROM review_records WHERE collection=:collection ORDER BY created_at DESC"), {"collection": collection}).all()
+        records = [json.loads(row[0]) for row in rows]
         total = len(records)
         start = max(page - 1, 0) * page_size
         return records[start : start + page_size], total
@@ -102,21 +119,27 @@ class ReviewStore:
         now = utc_now()
         payload.setdefault("created_at", now)
         payload["updated_at"] = now
-        self._write_path(self._path(collection, str(payload["id"])), payload)
+        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        with self.engine.begin() as connection:
+            connection.execute(text("""
+                INSERT INTO review_records(collection,id,payload,created_at,updated_at)
+                VALUES (:collection,:id,:payload,:created_at,:updated_at)
+                ON CONFLICT(collection,id) DO UPDATE SET payload=excluded.payload, updated_at=excluded.updated_at
+            """), {"collection": collection, "id": str(payload["id"]), "payload": encoded, "created_at": payload["created_at"], "updated_at": payload["updated_at"]})
         return payload
 
     def patch(self, collection: str, record_id: str, changes: Mapping[str, Any]) -> dict[str, Any]:
         record = self.require(collection, record_id)
         record.update(dict(changes))
         record["updated_at"] = utc_now()
-        self._write_path(self._path(collection, record_id), record)
+        self.put(collection, record)
         return record
 
     def delete_record(self, collection: str, record_id: str) -> None:
-        path = self._path(collection, record_id)
-        if not path.exists():
+        if self.get(collection, record_id) is None:
             raise KeyError(f"{collection} record not found: {record_id}")
-        path.unlink()
+        with self.engine.begin() as connection:
+            connection.execute(text("DELETE FROM review_records WHERE collection=:collection AND id=:id"), {"collection": collection, "id": str(record_id)})
 
     def require(self, collection: str, record_id: str) -> dict[str, Any]:
         record = self.get(collection, record_id)
@@ -395,21 +418,11 @@ class ReviewStore:
         return self.root / collection / f"{safe}.json"
 
     def _read_path(self, path: Path) -> dict[str, Any]:
-        return json.loads(path.read_text(encoding="utf-8"))
+        raise RuntimeError("JSON record paths are no longer supported")
 
     def _write_path(self, path: Path, payload: Mapping[str, Any]) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
-                json.dump(payload, handle, ensure_ascii=False, sort_keys=True, indent=2)
-                handle.write("\n")
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(tmp_name, path)
-        finally:
-            if os.path.exists(tmp_name):
-                os.unlink(tmp_name)
+        collection = path.parent.name
+        self.put(collection, payload)
 
     def _idempotency_id(self, scope: str, key: str) -> str:
         return stable_hash({"scope": scope, "key": key})

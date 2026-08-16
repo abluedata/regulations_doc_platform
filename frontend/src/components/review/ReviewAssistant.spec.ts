@@ -1,129 +1,154 @@
-import { mount, flushPromises } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ReviewAssistant from './ReviewAssistant.vue'
 import { useReviewStore } from '@/stores/review'
 
-const { createConversation, streamReviewAssistant } = vi.hoisted(() => ({
-  createConversation: vi.fn(),
+const api = vi.hoisted(() => ({
+  getReviewConversation: vi.fn(),
+  listReviewConversationMessages: vi.fn(),
+  regenerateReviewRecommendations: vi.fn(),
+  clearReviewConversationMessages: vi.fn(),
   streamReviewAssistant: vi.fn(),
 }))
 
 vi.mock('@/api/review/review', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/api/review/review')>(),
-  createConversation,
-  streamReviewAssistant,
+  ...api,
 }))
+
+const persistedMessages = [
+  { id: 'message-1', role: 'user', content: '服务期限是多久？', status: 'completed', citations: [] },
+  { id: 'message-2', role: 'assistant', content: '服务期限为36个月。', status: 'completed', citations: [] },
+]
+
+function seedStore() {
+  const store = useReviewStore()
+  store.analysisJobId = 'job-1'
+  store.files = [{
+    id: 'membership-1', name: '合同.pdf', size: '1 KB', progress: 100, status: 'ready',
+    documentId: 'doc-1', documentVersionId: 'version-1',
+  }]
+  return store
+}
+
+function snapshot(messages = persistedMessages) {
+  return {
+    data: {
+      conversation: { id: 'conversation-1', job_id: 'job-1', document_id: 'doc-1', document_version_id: 'version-1' },
+      messages,
+      recommended_questions: [
+        { id: 'question-1', question: '付款期限是否存在风险？', rank: 1 },
+        { id: 'question-2', question: '违约责任如何调整？', rank: 2 },
+      ],
+    },
+  }
+}
 
 describe('ReviewAssistant', () => {
   beforeEach(() => {
-    localStorage.clear()
     setActivePinia(createPinia())
-    createConversation.mockReset().mockResolvedValue({ data: { id: 'conv-1' } })
-    streamReviewAssistant.mockReset()
+    Object.values(api).forEach((mock) => mock.mockReset())
+    api.getReviewConversation.mockResolvedValue(snapshot())
+    api.listReviewConversationMessages.mockResolvedValue({ data: { items: persistedMessages } })
+    api.clearReviewConversationMessages.mockResolvedValue({ data: undefined })
+    api.streamReviewAssistant.mockImplementation(async (_id, _payload, handlers) => {
+      handlers.onToken?.({ request_id: 'request-1', content: '流式暂存内容' })
+      handlers.onDone?.({ request_id: 'request-1', answer: '服务端终版回答', refused: false, citations: [] })
+    })
   })
 
-  it('restores conversation history after reload and reuses persisted conversation id', async () => {
-    localStorage.setItem('review-assistant:job-1', JSON.stringify({
-      messages: [
-        { id: 2, role: 'user', content: '服务期限是多久？' },
-        { id: 3, role: 'assistant', content: '服务期限为36个月。' },
-      ],
-      selectedMembershipId: 'membership-1',
-      conversations: { 'membership-1': 'conv-persisted' },
-    }))
-    const store = useReviewStore()
-    store.analysisJobId = 'job-1'
-    store.files = [{
-      id: 'membership-1', name: '合同.pdf', size: '1 KB', progress: 100, status: 'ready',
-      documentId: 'doc-1', documentVersionId: 'v1',
-    }]
-    streamReviewAssistant.mockImplementation(async (_id, _payload, handlers) => {
-      handlers.onToken?.({ content: '追问回答' })
-      handlers.onDone?.({ refused: false, citations: [] })
-    })
+  it('loads the document-version conversation and renders durable messages and recommendations', async () => {
+    const getItem = vi.spyOn(Storage.prototype, 'getItem')
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+    seedStore()
 
     const wrapper = mount(ReviewAssistant, { global: { plugins: [ElementPlus] } })
     await flushPromises()
 
+    expect(api.getReviewConversation).toHaveBeenCalledWith('job-1', 'version-1')
     expect(wrapper.text()).toContain('服务期限是多久？')
     expect(wrapper.text()).toContain('服务期限为36个月。')
+    expect(wrapper.text()).toContain('付款期限是否存在风险？')
+    expect(wrapper.text()).not.toContain('与标准模板有什么差异？')
+    expect(getItem).not.toHaveBeenCalledWith(expect.stringMatching(/^review-assistant:/))
+    expect(setItem).not.toHaveBeenCalledWith(expect.stringMatching(/^review-assistant:/), expect.anything())
+    getItem.mockRestore()
+    setItem.mockRestore()
+  })
+
+  it('reuses the snapshot conversation and reconciles messages after a terminal event', async () => {
+    seedStore()
+    const wrapper = mount(ReviewAssistant, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+    api.listReviewConversationMessages.mockResolvedValueOnce({ data: { items: [
+      ...persistedMessages,
+      { id: 'message-3', role: 'user', content: '追问', status: 'completed', citations: [] },
+      { id: 'message-4', role: 'assistant', content: '服务端终版回答', status: 'completed', citations: [] },
+    ] } })
 
     await wrapper.get('[data-test="assistant-input"]').setValue('追问')
     await wrapper.get('[data-test="assistant-send"]').trigger('click')
     await flushPromises()
 
-    expect(streamReviewAssistant).toHaveBeenCalledWith('conv-persisted', expect.anything(), expect.anything())
-    expect(createConversation).not.toHaveBeenCalled()
+    expect(api.streamReviewAssistant).toHaveBeenCalledWith('conversation-1', expect.objectContaining({
+      message: '追问',
+      finding_id: undefined,
+    }), expect.anything())
+    expect(api.listReviewConversationMessages).toHaveBeenCalledWith('conversation-1')
+    expect(wrapper.text()).toContain('服务端终版回答')
   })
 
-  it('binds the conversation to the selected document membership', async () => {
-    const store = useReviewStore()
-    store.analysisJobId = 'job-1'
-    store.files = [{
-      id: 'membership-1', name: '合同.pdf', size: '1 KB', progress: 100, status: 'ready',
-      documentId: 'doc-1', documentVersionId: 'v1',
-    }]
-    streamReviewAssistant.mockImplementation(async (_id, _payload, handlers) => {
-      handlers.onToken?.({ content: '付款期限为三十日。' })
-      handlers.onDone?.({ refused: false, citations: [{
-        citation_id: 'c1', filename: '合同.pdf', document_id: 'doc-1', document_version_id: 'v1',
-        block_id: 'b1', quote: '三十日内付款', quote_start: 0, quote_end: 7,
-        locator: { kind: 'pdf', page_number: 2 },
-      }] })
-    })
+  it('reconciles authoritative messages when the stream connection fails', async () => {
+    seedStore()
+    api.streamReviewAssistant.mockRejectedValueOnce(new Error('network'))
+    api.listReviewConversationMessages.mockResolvedValueOnce({ data: { items: [
+      ...persistedMessages,
+      { id: 'message-error', role: 'assistant', content: '请求中断，请重试。', status: 'error', citations: [] },
+    ] } })
     const wrapper = mount(ReviewAssistant, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
 
-    await wrapper.get('[data-test="assistant-input"]').setValue('付款期限？')
-    await wrapper.get('[data-test="assistant-send"]').trigger('click')
-
-    expect(createConversation).toHaveBeenCalledWith('job-1', 'membership-1')
-    expect(wrapper.text()).toContain('付款期限为三十日')
-    expect(wrapper.text()).toContain('三十日内付款')
-
-    await wrapper.get('[data-test="assistant-citation"]').trigger('click')
-    expect(wrapper.emitted('locate')?.[0]?.[0]).toMatchObject({ document_version_id: 'v1' })
-  })
-
-  it('renders markdown tables in assistant replies', async () => {
-    const store = useReviewStore()
-    store.analysisJobId = 'job-1'
-    store.files = [{
-      id: 'membership-1', name: '合同.pdf', size: '1 KB', progress: 100, status: 'ready',
-      documentId: 'doc-1', documentVersionId: 'v1',
-    }]
-    streamReviewAssistant.mockImplementation(async (_id, _payload, handlers) => {
-      handlers.onToken?.({ content: '| 项目 | 金额 |\n| --- | --- |\n| 最高投标限价 | 5220000元 |' })
-      handlers.onDone?.({ refused: false, citations: [] })
-    })
-    const wrapper = mount(ReviewAssistant, { global: { plugins: [ElementPlus] } })
-    const input = wrapper.get('[data-test="assistant-input"]')
-    await input.setValue('最高限价是多少？')
+    await wrapper.get('[data-test="assistant-input"]').setValue('追问')
     await wrapper.get('[data-test="assistant-send"]').trigger('click')
     await flushPromises()
-    const md = wrapper.findAll('.assistant-message__content').at(-1)
-    expect(md?.exists()).toBe(true)
-    if (!md) return
-    // happy-dom 的 HTML 解析器会丢弃 table 结构标签（真实浏览器保留），
-    // 单测断言 markdown 已被解析且单元格文本保留，表格渲染由浏览器 e2e 覆盖。
-    expect(md.text()).toContain('5220000元')
-    expect(md.text()).toContain('最高投标限价')
-    expect(md.html()).not.toContain('| --- |')
+
+    expect(api.listReviewConversationMessages).toHaveBeenCalledWith('conversation-1')
+    expect(wrapper.text()).toContain('请求中断，请重试。')
   })
 
-  it('renders a grounded refusal without citations', async () => {
+  it('shows an empty state when no ready document is available', async () => {
     const store = useReviewStore()
     store.analysisJobId = 'job-1'
-    store.files = [{ id: 'membership-1', name: '合同.pdf', size: '1 KB', progress: 100, status: 'ready' }]
-    streamReviewAssistant.mockImplementation(async (_id, _payload, handlers) => {
-      handlers.onToken?.({ content: '当前文档未提供足够依据，无法可靠回答该问题。' })
-      handlers.onDone?.({ refused: true, refusal_code: 'no_evidence', citations: [] })
-    })
     const wrapper = mount(ReviewAssistant, { global: { plugins: [ElementPlus] } })
-    await wrapper.get('[data-test="assistant-input"]').setValue('外部收入？')
-    await wrapper.get('[data-test="assistant-send"]').trigger('click')
-    expect(wrapper.get('[data-test="assistant-refusal"]').text()).toContain('未提供足够依据')
-    expect(wrapper.find('[data-test="assistant-citation"]').exists()).toBe(false)
+    await flushPromises()
+
+    expect(api.getReviewConversation).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('尚未关联可问答文档')
+    expect(wrapper.get('[data-test="assistant-send"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('shows a recoverable error when loading the server conversation fails', async () => {
+    seedStore()
+    api.getReviewConversation.mockRejectedValueOnce(new Error('offline'))
+    const wrapper = mount(ReviewAssistant, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('加载对话失败')
+  })
+
+  it('clears persisted messages through the API and reloads them', async () => {
+    seedStore()
+    const wrapper = mount(ReviewAssistant, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+    api.listReviewConversationMessages.mockResolvedValueOnce({ data: { items: [] } })
+
+    await wrapper.get('[aria-label="清空问答记录"]').trigger('click')
+    await flushPromises()
+
+    expect(api.clearReviewConversationMessages).toHaveBeenCalledWith('conversation-1')
+    expect(api.listReviewConversationMessages).toHaveBeenCalledWith('conversation-1')
+    expect(wrapper.text()).not.toContain('服务期限为36个月。')
   })
 })

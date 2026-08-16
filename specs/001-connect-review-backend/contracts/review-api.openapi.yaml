@@ -463,6 +463,40 @@ paths:
           content:
             application/json: {schema: {$ref: '#/components/schemas/AnalysisJob'}}
         '404': {$ref: '#/components/responses/NotFound'}
+  /api/review/analysis-jobs/{job_id}/stream:
+    get:
+      tags: [Analysis]
+      operationId: streamAnalysisJob
+      description: |
+        Durable SSE acceleration stream for committed analysis fragments. REST job/findings remain authoritative.
+        Event framing, resume, ordering, and payload rules are defined in review-analysis-events.md.
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - name: Last-Event-ID
+          in: header
+          required: false
+          description: Highest fully applied per-job event sequence; only later events are replayed.
+          schema: {type: integer, minimum: 0, default: 0}
+      responses:
+        '200':
+          description: SSE progress/fragment stream ending in exactly one complete or error event
+          headers:
+            Cache-Control:
+              schema: {type: string, const: no-cache}
+            X-Accel-Buffering:
+              schema: {type: string, const: 'no'}
+          content:
+            text/event-stream:
+              schema: {type: string}
+              examples:
+                fragment:
+                  summary: One committed fragment with resumable event identity
+                  value: |-
+                    id: 43
+                    event: fragment
+                    data: {"job_id":"job-1","event_seq":43,"job_revision":9,"result_revision":3,"document_id":"doc-1","document_version_id":"version-1","fragment_id":"version-1:planner-v1:0032-0064","fragment_index":1,"fragment_total":24,"scope":"fragment_local","processed_fragments":2,"total_fragments":24,"finding_count":3,"findings":[]}
+
+        '404': {$ref: '#/components/responses/NotFound'}
   /api/review/analysis-jobs/{job_id}/findings:
     get:
       tags: [Analysis]
@@ -1054,7 +1088,7 @@ components:
         id: {$ref: '#/components/schemas/Uuid'}
         document_id: {type: string}
         document_version_id: {type: string}
-        status: {enum: [queued, running, completed, failed]}
+        status: {enum: [queued, running, complete, complete_degraded, failed, cancelled]}
         progress: {type: integer, minimum: 0, maximum: 100}
         attempt: {type: integer, minimum: 0}
         error: {$ref: '#/components/schemas/NullableJobError'}
@@ -1065,11 +1099,15 @@ components:
         id: {$ref: '#/components/schemas/Uuid'}
         parent_job_id: {oneOf: [{$ref: '#/components/schemas/Uuid'}, {type: 'null'}]}
         snapshot: {$ref: '#/components/schemas/AnalysisSnapshotSummary'}
-        status: {enum: [queued, running, completed, partial, failed]}
+        status: {enum: [queued, parsing, running, complete, complete_degraded, failed, cancelled]}
         progress: {type: integer, minimum: 0, maximum: 100}
         revision: {type: integer, minimum: 0}
         result_revision: {type: integer, minimum: 0}
         decision_revision: {type: integer, minimum: 0}
+        processed_fragments: {type: integer, minimum: 0, default: 0}
+        total_fragments: {type: integer, minimum: 0, default: 0}
+        failed_fragments: {type: integer, minimum: 0, default: 0}
+        last_event_seq: {type: integer, minimum: 0, default: 0}
         documents: {type: array, items: {$ref: '#/components/schemas/AnalysisDocumentJob'}}
         error: {$ref: '#/components/schemas/NullableJobError'}
         created_at: {$ref: '#/components/schemas/Timestamp'}

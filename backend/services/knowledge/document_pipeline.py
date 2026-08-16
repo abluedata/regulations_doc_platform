@@ -16,6 +16,7 @@ import math
 import mimetypes
 import os
 import re
+import threading
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
@@ -100,6 +101,30 @@ def enqueue_parse(doc_id: str) -> None:
     _executor.submit(_run_pipeline, doc_id)
 
 
+def _progress_ticker(
+    doc_id: str,
+    stop: threading.Event,
+    *,
+    interval: float = 10.0,
+    on_update: object | None = None,
+) -> threading.Thread:
+    """解析期间的后台进度 ticker：每 interval 秒把 progress 递增 1（70 → 79 封顶），
+    前端轮询文档状态即可看到进度持续爬升，直至解析完成调用方 set(stop)。"""
+
+    def tick() -> None:
+        progress = 70
+        while not stop.is_set():
+            stop.wait(interval)
+            if stop.is_set():
+                return
+            progress = min(79, progress + 1)
+            update_status(doc_id, "parsing", progress=progress)
+            if on_update is not None:
+                on_update(progress)
+
+    return threading.Thread(target=tick, name=f"doc-progress-{doc_id}", daemon=True)
+
+
 def _run_pipeline(doc_id: str) -> None:
     t0 = time.time()
     try:
@@ -121,7 +146,13 @@ def _run_pipeline(doc_id: str) -> None:
         content_list = None
         task_id = None
         if ext in ("pdf", "docx"):
-            parsed = _parse_with_mineru_or_fallback(src, ext)
+            parse_stop = threading.Event()
+            ticker = _progress_ticker(doc_id, parse_stop)
+            ticker.start()
+            try:
+                parsed = _parse_with_mineru_or_fallback(src, ext)
+            finally:
+                parse_stop.set()
             raw_blocks, page_count, engine = parsed[0], parsed[1], parsed[2]
             if len(parsed) > 3:
                 content_list = parsed[3]

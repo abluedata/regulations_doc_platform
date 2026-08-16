@@ -87,6 +87,32 @@ def test_stream_forwards_history_and_finding_context(conversation):
     assert received["finding"]["quote"] == "投标保证金"
 
 
+def test_streaming_answerer_emits_incremental_tokens(conversation):
+    """流式回答器：token 逐段推送且不重复补发整段，done 携带最终答案。"""
+    store, convo = conversation
+
+    def answerer(_question, _scope, _filename, **_kwargs):
+        yield "付款期限为"
+        yield "三十日。"
+        return GroundedAnswer(answer="付款期限为三十日。", citations=[{
+            "citation_id": "c1", "document_id": "doc-1", "document_version_id": "v1",
+            "filename": "合同.pdf", "block_id": "b1", "quote": "三十日内付款", "quote_start": 0,
+            "quote_end": 7, "locator": {"kind": "pdf", "page_number": 1},
+        }])
+
+    assistant = ReviewAssistant(store, answerer=answerer)
+    events = parse_events(assistant.stream_answer(convo["id"], {"request_id": "r4", "message": "付款期限？"}))
+    names = [name for name, _ in events]
+    statuses = [data["type"] for name, data in events if name == "status"]
+    assert statuses == ["retrieving", "generating"]
+    assert names.index("status") < names.index("token")
+    tokens = [data["content"] for name, data in events if name == "token"]
+    assert tokens == ["付款期限为", "三十日。"]
+    assert events[-1][0] == "done"
+    assert events[-1][1]["answer"] == "付款期限为三十日。"
+    assert len(events[-1][1]["citations"]) == 1
+
+
 def test_completed_request_is_idempotently_replayed(conversation):
     store, convo = conversation
     calls = 0
@@ -97,7 +123,7 @@ def test_completed_request_is_idempotently_replayed(conversation):
         return GroundedAnswer.refusal("no_evidence")
 
     assistant = ReviewAssistant(store, answerer=answerer)
-    first = assistant.stream_answer(convo["id"], {"request_id": "same", "message": "问题"})
-    second = assistant.stream_answer(convo["id"], {"request_id": "same", "message": "问题"})
+    first = list(assistant.stream_answer(convo["id"], {"request_id": "same", "message": "问题"}))
+    second = list(assistant.stream_answer(convo["id"], {"request_id": "same", "message": "问题"}))
     assert calls == 1
     assert parse_events(first)[-1] == parse_events(second)[-1]

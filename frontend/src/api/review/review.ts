@@ -1,4 +1,9 @@
 import http from '../http'
+import type {
+  ReviewAssistantStreamMeta,
+  ReviewConversationMessages,
+  ReviewConversationSnapshot,
+} from '@/types/review'
 
 export interface ReviewPage<T> {
   items: T[]
@@ -83,6 +88,14 @@ export interface ReviewJob {
 
 export interface StreamHandlers {
   onIssues?: (issues: ReviewFinding[]) => void
+  onProgress?: (data: {
+    status: string
+    progress: number
+    document_index?: number
+    document_total?: number
+    document_id?: string
+    message?: string
+  }) => void
   onComplete?: (data: { status: string; finding_count?: number }) => void
   onError?: (data: { message: string }) => void
 }
@@ -237,25 +250,27 @@ export async function downloadExportArtifact(artifactId: string, filename = 'rev
   URL.revokeObjectURL(url)
 }
 
-export interface ReviewCitation {
-  citation_id: string
-  document_id: string
-  document_version_id: string
-  filename: string
-  block_id: string
-  chunk_id?: number | null
-  section_path?: string[]
-  quote: string
-  quote_start: number
-  quote_end: number
-  locator: Record<string, unknown>
+export type { ReviewConversationCitation as ReviewCitation } from '@/types/review'
+import type { ReviewConversationCitation as ReviewCitation } from '@/types/review'
+
+export function getReviewConversation(analysisJobId: string, documentVersionId: string) {
+  return http.get<ReviewConversationSnapshot>(
+    `/review/jobs/${analysisJobId}/documents/${documentVersionId}/conversation`,
+  )
 }
 
-export function createConversation(analysisJobId: string, documentMembershipId: string) {
-  return http.post<{ id: string; document_id: string; document_version_id: string }>('/review/conversations', {
-    analysis_job_id: analysisJobId,
-    document_membership_id: documentMembershipId,
-  })
+export function listReviewConversationMessages(conversationId: string) {
+  return http.get<ReviewConversationMessages>(`/review/conversations/${conversationId}/messages`)
+}
+
+export function regenerateReviewRecommendations(conversationId: string) {
+  return http.post<ReviewConversationSnapshot>(
+    `/review/conversations/${conversationId}/recommended-questions/regenerate`,
+  )
+}
+
+export function clearReviewConversationMessages(conversationId: string) {
+  return http.delete<void>(`/review/conversations/${conversationId}/messages`)
 }
 
 export function stopConversation(conversationId: string, requestId: string) {
@@ -268,6 +283,7 @@ export async function streamAnalysis(jobId: string, handlers: StreamHandlers, si
   if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`)
   await consumeSse(response.body, (event, data) => {
     if (event === 'issues') handlers.onIssues?.(data)
+    if (event === 'progress') handlers.onProgress?.(data)
     if (event === 'complete') handlers.onComplete?.(data)
     if (event === 'error') handlers.onError?.(data)
   })
@@ -275,9 +291,9 @@ export async function streamAnalysis(jobId: string, handlers: StreamHandlers, si
 
 export async function streamReviewAssistant(
   conversationId: string,
-  payload: { request_id: string; message: string; finding_id?: string; history: Array<{ role: string; content: string }> },
+  payload: { request_id: string; message: string; finding_id?: string },
   handlers: {
-    onMeta?: (data: Record<string, unknown>) => void
+    onMeta?: (data: ReviewAssistantStreamMeta) => void
     onStatus?: (data: { request_id: string; type: 'retrieving' | 'generating' }) => void
     onToken?: (data: { request_id: string; content: string }) => void
     onDone?: (data: { request_id: string; answer: string; refused: boolean; refusal_code?: string; citations: ReviewCitation[] }) => void
@@ -286,7 +302,7 @@ export async function streamReviewAssistant(
   signal?: AbortSignal,
 ) {
   const base = import.meta.env.VITE_API_BASE || '/api'
-  const response = await fetch(`${base}/review/conversations/${conversationId}/stream`, {
+  const response = await fetch(`${base}/review/conversations/${conversationId}/messages/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
     body: JSON.stringify(payload),

@@ -224,3 +224,25 @@
 
 - 直接把模型 ID 保存到前端配置：拒绝，部署模型变更会破坏历史配置。
 - `high_only` 丢弃低中风险：拒绝，无法审计和重新筛选。
+
+## 16. 审查发现片段实时输出
+
+**Decision**: 分析流以“已提交的稳定分析片段”而不是模型 token 或整份文档作为增量单位。每个片段先完成结构化解析、证据校验、fingerprint 去重和事务持久化，再通过带单调 `event_seq` 的 SSE `fragment` 事件输出；REST Job/Findings 保持事实源。
+
+**Rationale**:
+
+- 当前 `on_document_result` 边界使单文档任务必须等待全文结束，与 PRD 的“逐块流式产出”不一致。
+- Finding 是可处置、可导出、可审计的业务实体，只有完整且证据可核验时才适合进入 UI；模型半截 JSON 不具备这一属性。
+- 片段事件包含零个或多个 Finding，可以同时表达真实进度和首个完整结果，不需要为每条规则制造高频网络事件。
+- 持久事件序号、Last-Event-ID 和稳定 Finding ID 共同解决断线重放、重复提交和页面刷新。
+- 当前单 worker/SQLite 环境可用数据库 outbox + `threading.Condition` 即时唤醒，不需要新增外部消息系统。
+
+**Alternatives considered**:
+
+- 每个模型 token 直接更新风险卡片：拒绝，风险等级、引用、建议和位置均可能未闭合或后续改变。
+- 每命中一条规则立即发送未经持久化的 Finding：拒绝，连接成功但数据库提交失败时会产生幽灵结果。
+- 只把 SSE 轮询从 0.5 秒降到更短：拒绝，只减少等待，不改变文档级产出边界、恢复和重复问题。
+- 首期并行执行多个片段：延期；先顺序执行保证提交顺序、SQLite 写入和模型限流可控，再根据指标决定是否增加有界并发。
+- 所有规则强制切块：拒绝，缺失条款、全文一致性和跨段聚合规则必须保留 `document_global` 语义。
+
+详细设计见 [streaming-findings-plan.md](streaming-findings-plan.md)，线协议见 [contracts/review-analysis-events.md](contracts/review-analysis-events.md)。

@@ -50,6 +50,19 @@ STATUS_LABELS = {
     "needs_ocr": "需 OCR",
 }
 
+# 状态 → 默认进度（解析期间由 pipeline 进度 ticker 细粒度递增）
+STATUS_PROGRESS = {
+    "uploaded": 65,
+    "queued": 65,
+    "parsing": 70,
+    "normalizing": 74,
+    "needs_ocr": 70,
+    "chunking": 80,
+    "indexing": 90,
+    "ready": 100,
+    "failed": 0,
+}
+
 ALLOWED_EXT = {".pdf", ".docx"}
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50MB
 
@@ -577,6 +590,7 @@ def create_doc_record(
         "file_size": file_size,
         "status": "queued",
         "stage_label": STATUS_LABELS["queued"],
+        "progress": STATUS_PROGRESS["queued"],
         "error": None,
         "page_count": None,
         "chunk_count": None,
@@ -606,6 +620,11 @@ def update_status(
             return None
         meta["status"] = status
         meta["stage_label"] = STATUS_LABELS.get(status, status)
+        # 状态切换时写入默认进度；调用方可显式传 progress 覆盖（解析 ticker 逐段递增）
+        if "progress" in fields:
+            meta["progress"] = fields.pop("progress")
+        else:
+            meta["progress"] = STATUS_PROGRESS.get(status, 65)
         if error is not None:
             meta["error"] = error
         elif status != "failed":

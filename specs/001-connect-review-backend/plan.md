@@ -56,11 +56,13 @@
 specs/001-connect-review-backend/
 ├── spec.md
 ├── plan.md
+├── streaming-findings-plan.md
 ├── research.md
 ├── data-model.md
 ├── quickstart.md
 └── contracts/
     ├── review-api.openapi.yaml
+    ├── review-analysis-events.md
     └── review-events.md
 ```
 
@@ -209,16 +211,17 @@ ReviewRulesView config
        create queued AnalysisJob + per-document jobs + audit event
   -> review_jobs runner claims lease
   -> per document:
-       deterministic structure checks
-       -> scoped ES retrieval by snapshot version IDs
-       -> structured semantic classification
-       -> evidence anchor validation
-       -> persist Finding or manual_review
-  -> aggregate completed / partial / failed + monotonic revision
-  -> ReviewConsole polls GET status/findings; optional progress SSE may accelerate UI
+       plan stable owned/context fragments
+       -> per fragment: deterministic checks + scoped semantic classification
+       -> evidence anchor validation + fingerprint dedupe
+       -> atomically persist FragmentResult + Finding[] + result revision + event sequence
+       -> emit durable `fragment` SSE after commit
+       -> document-global rules run after local fragments
+  -> aggregate complete / complete_degraded / failed / cancelled + monotonic revision
+  -> ReviewConsole upserts committed findings from SSE and reconciles through GET status/findings
 ```
 
-同一幂等键和同一规范化请求哈希返回原任务；相同键但不同请求返回 409。失败重试新建 retry job，但只包含失败的 `AnalysisDocumentJob`，成功结果不重复生成。
+同一幂等键和同一规范化请求哈希返回原任务；相同键但不同请求返回 409。失败重试新建 retry job，但只包含失败的 `AnalysisDocumentJob` 或片段，成功结果不重复生成。分析 SSE 使用持久 `event_seq` 与 `Last-Event-ID` 加速界面，REST Job/Findings 始终是恢复事实源。详细方案见 [streaming-findings-plan.md](streaming-findings-plan.md)，线协议见 [contracts/review-analysis-events.md](contracts/review-analysis-events.md)。
 
 ### 4. 风险与高亮双向联动
 
@@ -295,8 +298,11 @@ PUT finding decision / PUT job decision
 ### Analysis and evidence
 
 - 结构检查器接收 IR，不接收渲染 HTML；输出候选 evidence reference 与可重复的 rule evaluation。
+- 分析引擎保留文档聚合 API，并增加稳定片段 iterator；片段区分 owned blocks 与重叠 context blocks，Finding 只能归属 owned 范围。
+- 编译后的规则明确标记 `fragment_local | document_global`；存量未标记规则默认全文执行，避免切块改变业务语义。
 - `search_local()` 新过滤参数默认 `None`，以保持通用问答兼容；review caller 必须传非空 snapshot scope，空 scope 直接失败。
 - 语义模型只返回 schema 化的 finding type/severity/reason/suggestion 与候选 block references；`evidence.py` 根据 IR 解析实际 quote、范围和 checksum。
+- 每个片段只有在 Finding 完整、证据校验、fingerprint 去重后才原子提交；模型半截 JSON 或 provisional Finding 不进入 SSE/UI。
 - 无法校验、OCR 低可信或只能页级/段落级定位的结果设置 `conclusion=manual_review`、`precision=page|block`，不能宣称直接违规。
 
 ### Review QA and compatibility
@@ -307,7 +313,7 @@ PUT finding decision / PUT job decision
 
 ## API Design Summary
 
-完整请求/响应和 schema 见 [contracts/review-api.openapi.yaml](contracts/review-api.openapi.yaml)，SSE 与状态恢复规则见 [contracts/review-events.md](contracts/review-events.md)。核心资源组：
+完整请求/响应和 schema 见 [contracts/review-api.openapi.yaml](contracts/review-api.openapi.yaml)，分析片段 SSE 见 [contracts/review-analysis-events.md](contracts/review-analysis-events.md)，问答 SSE 与状态恢复规则见 [contracts/review-events.md](contracts/review-events.md)。核心资源组：
 
 - `/api/docs/{doc_id}/versions/{version_id}`、`/file`、`/preview`：现有 docs 的版本化适配。
 - `/api/review/batches`、`/{batch_id}/documents`：四步流程的持久容器。
@@ -324,7 +330,7 @@ PUT finding decision / PUT job decision
 1. **共享底座先行**：为文档增加不可变版本和 evidence-capable IR；ES mapping/reindex；抽取共享 SSE、LLM client、safe Markdown，并对旧功能做兼容回归。
 2. **审查存储和只读目录**：SQLite schema/repository、batch/source/template/rule/configuration API；前端四步页面去除固定 Mock。
 3. **规则生命周期**：持久 job runner、规则提取、候选人工确认和发布，所有来源 anchor 服务端校验。
-4. **分析纵切**：snapshot、幂等 job、逐文档状态、混合分析、findings、失败重试和恢复。
+4. **分析纵切**：snapshot、幂等 job、逐片段/逐文档状态、混合分析、Finding 原子提交、持久事件序号、断点续传、失败重试和恢复；详见 [streaming-findings-plan.md](streaming-findings-plan.md)。
 5. **证据 viewer**：PDF.js 与 DOCX locator viewer，共享到知识预览，完成风险/原文双向选择和降级。
 6. **问答/处理/导出**：review-scoped conversation、人工决定、审计、DOCX artifact。
 7. **端到端验收**：重启恢复、幂等冲突、部分失败、旧 chat/docs 回归、PDF/DOCX 高亮、XSS、导出一致性和性能基线。
@@ -378,7 +384,9 @@ npm exec playwright test
 | P1 | SQLite 与多 worker 不兼容当前 runner | 重复 claim/并发不确定 | MVP 强制单 Uvicorn worker；repository/lease 边界支持后续迁移 |
 | P1 | PDF rotation/zoom/DPR 坐标换算 | overlay 漂移 | PDF.js viewport transform；Playwright 多缩放/旋转截图和像素断言 |
 | P1 | DOCX 浏览器排版与 Word 分页不同 | 页码误导 | 不承诺 DOCX 页码；按结构定位并展示段落/表格单元 |
-| P1 | polling/SSE 乱序回写旧状态 | UI 状态倒退 | job 使用单调 revision；store 仅接收更大 revision |
+| P1 | polling/SSE 乱序回写旧状态 | UI 状态倒退或重复卡片 | job/result 使用单调 revision，分析事件使用单调 event sequence；store 只应用连续的新事件，间隙触发 REST 对账 |
+| P1 | 切块破坏全文规则或重叠片段重复命中 | 误报、漏报和重复 Finding | 规则分 `fragment_local/document_global`；owned/context 分离；稳定 fingerprint 唯一约束 |
+| P1 | 模型半成品通过 SSE 进入风险卡片 | 无效证据被用户处置 | 完整 schema、证据校验和事务提交后才发送 fragment；禁止 provisional Finding |
 | P1 | 只禁用按钮无法幂等 | 重复任务/导出 | SQLite unique idempotency key + request hash；冲突返回 409 |
 | P1 | 现有 http.ts 压平结构错误 | 前端无法展示字段错误/可重试 | adapter 同时解析 string/object detail，保留 code/fields |
 | P1 | Cooperative cancellation 与 done 竞态 | 错误保存完整回答 | request 状态 CAS；终态只能写一次；incomplete 独立字段 |

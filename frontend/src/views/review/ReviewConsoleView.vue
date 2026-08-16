@@ -6,6 +6,7 @@ import {
   Check,
   Close,
   Download,
+  Loading,
 } from '@element-plus/icons-vue'
 import RiskCard from '@/components/review/RiskCard.vue'
 import ReviewConfigPanel from '@/components/review/ReviewConfigPanel.vue'
@@ -37,27 +38,37 @@ const overallRisk = computed(() => {
   if (review.risks.some((risk) => risk.level === 'medium')) return '中'
   return '低'
 })
-const documentLabel = computed(() => {
-  if (singleDocMode.value) {
-    return scopedFile.value?.name ?? '未找到该文档'
-  }
-  const names = review.files.filter((file) => file.status !== 'failed').map((file) => file.name)
-  return names.length ? names.join('、') : '尚未关联待审文档'
-})
 
 /** 单 PDF 审查模式：/review/document/:documentId（从文件队列点击已就绪文件进入） */
 const singleDocId = computed(() => (typeof route.params.documentId === 'string' ? route.params.documentId : ''))
 const singleDocMode = computed(() => Boolean(singleDocId.value))
 const scopedFile = computed(() => review.files.find((file) => file.documentId === singleDocId.value) ?? null)
+/** 有任务时把队列/页头限定到任务覆盖的文档，避免把从未审查的新文件混进「审查结果」 */
+const scopedFiles = computed(() =>
+  review.files.filter(
+    (file) =>
+      file.status !== 'failed' &&
+      file.documentId &&
+      (!review.analysisJobId || review.analysisJobDocIds.has(file.documentId)),
+  ),
+)
+const documentLabel = computed(() => {
+  if (singleDocMode.value) {
+    return scopedFile.value?.name ?? '未找到该文档'
+  }
+  const names = scopedFiles.value.map((file) => file.name)
+  return names.length ? names.join('、') : '尚未关联待审文档'
+})
+
 const analysisInProgress = computed(() =>
   ['loading', 'queued', 'parsing', 'running'].includes(review.analysisStatus),
 )
 
-/** PDF 预览加载哪个文档：单文档模式固定为该文档，其次优先选中 finding 的文档，再批次首文档 */
+/** PDF 预览加载哪个文档：单文档模式固定为该文档，其次优先选中 finding 的文档，再任务范围内首文档 */
 const pdfDocId = computed(() => {
   if (singleDocMode.value) return singleDocId.value
   if (selectedRisk.value?.documentId) return selectedRisk.value.documentId
-  return review.files.find((file) => file.documentId)?.documentId ?? ''
+  return scopedFiles.value.find((file) => file.documentId)?.documentId ?? ''
 })
 const activePage = computed(() => {
   const evidence = selectedRisk.value?.evidence
@@ -84,6 +95,8 @@ onMounted(() => {
   // 支持 deep-link：/review/console?jobId=xxx 直接加载指定审查任务（刷新页面后也可恢复）
   const jobId = typeof route.query.jobId === 'string' ? route.query.jobId : ''
   if (jobId && jobId !== review.analysisJobId) review.analysisJobId = jobId
+  // 单文档模式：未带 ?jobId 直链时清空上一个任务的状态，避免把其它文档的发现串显到当前文档
+  if (singleDocMode.value && !jobId) review.resetAnalysis()
   // 单文档模式：不自动恢复批次级任务，仅接受 ?jobId 直链，避免混入其他文档的发现
   if (review.analysisJobId && (!singleDocMode.value || jobId)) void loadResults()
   else activeAnalysisTab.value = 'config'
@@ -103,9 +116,11 @@ async function loadResults() {
   loading.value = true
   loadError.value = ''
   try {
+    // 单文档模式：发现/预览只取当前文档（批次任务 deep-link 时也能正确隔离）
+    const scopeId = singleDocMode.value ? singleDocId.value : undefined
     await review.loadBatchFiles()
-    await review.refreshJob()
-    await review.loadFindings()
+    await review.refreshJob(scopeId)
+    await review.loadFindings(scopeId)
   } catch (err) {
     loadError.value = err instanceof Error ? err.message : '审查结果加载失败'
   } finally {
@@ -177,14 +192,6 @@ async function decideRisk(risk: ReviewRisk, decision: 'accepted' | 'dismissed') 
   }
 }
 
-function approveDraft() {
-  review.approveDraft()
-}
-
-function rejectChanges() {
-  review.rejectChanges()
-}
-
 async function exportReport() {
   if (!review.analysisJobId || exporting.value) return
   exporting.value = true
@@ -243,6 +250,10 @@ function goToUpload() {
         <aside class="findings-panel" aria-label="审查结果">
           <div class="findings-heading">
             <h2>审查结果</h2>
+            <el-button v-if="hasJob" data-test="export-report" size="small" plain :loading="exporting" @click="exportReport">
+              <el-icon aria-hidden="true"><Download /></el-icon>
+              导出详细报告
+            </el-button>
           </div>
           <div class="analysis-tabs" role="tablist" aria-label="审查分析视图">
             <button
@@ -292,9 +303,24 @@ function goToUpload() {
                 <el-button plain @click="goToUpload">文档上传</el-button>
               </div>
             </div>
-            <div v-else class="metrics-grid">
+            <div v-if="hasJob" class="metrics-grid">
               <div><span>发现问题</span><strong>{{ findingCount }}</strong></div>
               <div><span>风险评分</span><strong class="risk-score">{{ overallRisk }}</strong></div>
+            </div>
+            <!-- 实时反馈：分析进行中展示进度条/阶段文案，发现列表随 issues 事件实时刷新 -->
+            <div v-if="hasJob && analysisInProgress" class="live-progress" data-test="analysis-progress">
+              <div class="live-progress__bar">
+                <el-progress
+                  :percentage="review.analysisProgress"
+                  :stroke-width="8"
+                  :status="review.analysisStatus === 'failed' ? 'exception' : undefined"
+                />
+              </div>
+              <p class="live-progress__message">
+                <el-icon class="is-loading" aria-hidden="true"><Loading /></el-icon>
+                {{ review.analysisMessage || '正在分析…' }}
+              </p>
+              <span class="live-progress__hint">审查结果实时更新：已标记 {{ findingCount }} 项风险</span>
             </div>
             <div v-if="hasJob" class="findings-section">
               <div class="findings-section__title"><h3>审查发现</h3><span>{{ findingCount }} 项</span></div>
@@ -321,26 +347,13 @@ function goToUpload() {
             </div>
             <p v-if="hasJob && exportError" class="console-error" role="alert">{{ exportError }}</p>
             <p v-if="hasJob && decideError" class="console-error" role="alert">{{ decideError }}</p>
-            <div v-if="hasJob" class="console-actions">
-              <el-button type="danger" plain :disabled="review.analysisStatus !== 'complete' && review.analysisStatus !== 'complete_degraded'" @click="rejectChanges">拒绝更改</el-button>
-              <el-button
-                data-test="approve-draft"
-                type="primary"
-                :disabled="review.analysisStatus !== 'complete' && review.analysisStatus !== 'complete_degraded'"
-                @click="approveDraft"
-              >批准草案</el-button>
-              <el-button data-test="export-report" plain :loading="exporting" @click="exportReport">
-                <el-icon aria-hidden="true"><Download /></el-icon>
-                导出详细报告
-              </el-button>
-            </div>
           </div>
           <div v-else-if="activeAnalysisTab === 'assistant'" id="assistant-panel-content" class="panel-content" role="tabpanel" aria-labelledby="assistant-tab">
             <div v-if="!hasJob" class="findings-empty findings-empty--guide">
               <p>分析完成后，可围绕当前任务与所选风险进行文档问答。</p>
               <el-button type="primary" @click="activeAnalysisTab = 'config'">前往审查配置</el-button>
             </div>
-            <ReviewAssistant v-else :risk="selectedRisk ?? undefined" @locate="locateCitation" />
+            <ReviewAssistant v-else :risk="selectedRisk ?? undefined" :document-id="singleDocMode ? singleDocId : undefined" @locate="locateCitation" />
           </div>
           <div v-else id="config-panel-content" class="panel-content" role="tabpanel" aria-labelledby="config-tab">
             <div v-if="singleDocMode && !scopedFile" class="findings-empty findings-empty--guide">
@@ -437,6 +450,45 @@ function goToUpload() {
   line-height: 1.7;
 }
 
+/* 实时反馈：分析进行中的进度面板 */
+.live-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--action-outline);
+  border-radius: var(--radius-md);
+  background: var(--action-subtle);
+}
+
+.live-progress__bar :deep(.el-progress-bar__outer) {
+  background: var(--action-soft);
+}
+
+.live-progress__bar :deep(.el-progress-bar__inner) {
+  background: var(--action);
+}
+
+.live-progress__message {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.live-progress__message .el-icon {
+  color: var(--action);
+  font-size: 14px;
+}
+
+.live-progress__hint {
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+
 .findings-empty--guide {
   display: grid;
   gap: 10px;
@@ -519,6 +571,7 @@ function goToUpload() {
   min-height: 0;
   flex: 1;
   flex-direction: column;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
@@ -600,13 +653,17 @@ function goToUpload() {
   font-size: 11px;
 }
 
+/* 单列轨道必须 minmax(0, 1fr)：auto 轨道会被卡片内容（如不可断行的长文件名）的 max-content 撑宽，
+   导致整列风险卡超出 460px 结果面板 */
 .risk-list {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
 }
 
 .risk-item {
   display: flex;
+  min-width: 0;
   flex-direction: column;
   gap: 6px;
 }
@@ -628,15 +685,6 @@ function goToUpload() {
   margin: 10px 20px 0;
   color: var(--danger);
   font-size: 12px;
-}
-
-.console-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding: 16px 20px;
-  border-top: 1px solid var(--outline-soft);
-  background: var(--surface);
 }
 
 @media (max-width: 1199px) {
@@ -674,8 +722,7 @@ function goToUpload() {
 
   .findings-heading,
   .metrics-grid,
-  .findings-section,
-  .console-actions {
+  .findings-section {
     padding-left: 12px;
     padding-right: 12px;
   }

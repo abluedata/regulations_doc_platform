@@ -1,17 +1,23 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { ChatDotRound, Delete, Promotion } from '@element-plus/icons-vue'
 import SafeMarkdown from '@/components/common/SafeMarkdown.vue'
 import type { ReviewRisk } from '@/types'
+import type { ReviewConversationMessage, ReviewRecommendedQuestion } from '@/types/review'
 import { useReviewStore } from '@/stores/review'
 import { getActivePinia } from 'pinia'
-import { createConversation, streamReviewAssistant } from '@/api/review/review'
+import {
+  clearReviewConversationMessages,
+  getReviewConversation,
+  listReviewConversationMessages,
+  streamReviewAssistant,
+} from '@/api/review/review'
 import type { ReviewCitation } from '@/api/review/review'
 
 type AssistantRole = 'user' | 'assistant'
 
 interface AssistantMessage {
-  id: number
+  id: string
   role: AssistantRole
   content: string
   citations?: ReviewCitation[]
@@ -22,105 +28,99 @@ interface AssistantMessage {
 
 const props = defineProps<{
   risk?: ReviewRisk
+  /** 单文档审查模式：显式指定问答所依据的文档（无下拉框后自动选择） */
+  documentId?: string
 }>()
 const emit = defineEmits<{ locate: [anchor: ReviewCitation] }>()
 const store = getActivePinia() ? useReviewStore() : null
 
 const input = ref('')
-const nextMessageId = ref(2)
 const messageList = ref<HTMLElement | null>(null)
-const conversationByDocument = new Map<string, string>()
+const conversationId = ref('')
 const isStreaming = ref(false)
+const isLoading = ref(false)
 const selectedMembershipId = ref(store?.files.find((file) => file.status === 'ready')?.id ?? '')
-const messages = ref<AssistantMessage[]>([
-  {
-    id: 1,
-    role: 'assistant',
-    content: '请选择当前任务中的一份文档。回答只依据该文档原文，并提供可定位引用。',
-  },
-])
+const messages = ref<AssistantMessage[]>([])
+const recommendations = ref<ReviewRecommendedQuestion[]>([])
+let loadSequence = 0
 
-/** 会话历史持久化：按任务+文档保存，重载/重定向后恢复，避免历史丢失 */
-const HISTORY_MAX = 50
-const storageKey = computed(() => `review-assistant:${store?.analysisJobId ?? 'none'}`)
-
-function persistHistory() {
-  try {
-    const payload = {
-      messages: messages.value.filter((item) => item.content && !item.status).slice(-HISTORY_MAX),
-      selectedMembershipId: selectedMembershipId.value,
-      conversations: Object.fromEntries(conversationByDocument.entries()),
-      savedAt: Date.now(),
-    }
-    localStorage.setItem(storageKey.value, JSON.stringify(payload))
-  } catch {
-    // 存储不可用时静默降级（内存会话仍然可用）
+function toAssistantMessage(message: ReviewConversationMessage): AssistantMessage {
+  return {
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    citations: message.citations,
+    refused: message.refused,
+    error: message.status === 'error' || message.status === 'cancelled' || message.status === 'interrupted',
   }
 }
-
-function restoreHistory() {
-  try {
-    const raw = localStorage.getItem(storageKey.value)
-    if (!raw) return
-    const data = JSON.parse(raw) as {
-      messages?: AssistantMessage[]
-      selectedMembershipId?: string
-      conversations?: Record<string, string>
-    }
-    if (Array.isArray(data.messages) && data.messages.length) {
-      messages.value = data.messages.filter((item) => item.content && !item.error).slice(-HISTORY_MAX)
-      nextMessageId.value = Math.max(...messages.value.map((item) => item.id)) + 1
-    }
-    if (typeof data.selectedMembershipId === 'string' && data.selectedMembershipId) {
-      selectedMembershipId.value = data.selectedMembershipId
-    }
-    if (data.conversations && typeof data.conversations === 'object') {
-      for (const [key, value] of Object.entries(data.conversations)) {
-        if (typeof value === 'string') conversationByDocument.set(key, value)
-      }
-    }
-  } catch {
-    // 损坏的历史数据直接忽略
-  }
-}
-
-const suggestions = ['为什么被判定为风险？', '建议如何修改？', '与标准模板有什么差异？']
 const contextLabel = computed(() =>
-  selectedDocument.value ? `当前文档 · ${selectedDocument.value.name}` : '尚未选择可问答文档',
+  selectedDocument.value ? `当前文档 · ${selectedDocument.value.name}` : '尚未关联可问答文档',
 )
 const readyDocuments = computed(() => store?.files.filter((file) => file.status === 'ready') ?? [])
 const selectedDocument = computed(() => readyDocuments.value.find((file) => file.id === selectedMembershipId.value))
 
-onMounted(restoreHistory)
-watch(() => messages.value, persistHistory, { deep: true })
-watch(selectedMembershipId, persistHistory)
+/** 无下拉框后的自动选择：优先单文档模式的指定文档 → 选中风险所属文档（首个就绪文档作基准） */
+function applyAutoSelect() {
+  const preferredDocId = props.documentId || props.risk?.documentId
+  if (!preferredDocId) return
+  const match = store?.files.find((file) => file.documentId === preferredDocId && file.status === 'ready')
+  if (match) selectedMembershipId.value = match.id
+}
+
+// 无下拉框：自动锚定当前文档（单文档模式）或选中风险所属文档
+watch(() => [props.documentId, props.risk?.documentId], applyAutoSelect, { immediate: true })
+
+watch(
+  () => [store?.analysisJobId, selectedDocument.value?.documentVersionId] as const,
+  async ([jobId, documentVersionId]) => {
+    const sequence = ++loadSequence
+    conversationId.value = ''
+    recommendations.value = []
+    messages.value = []
+    if (!jobId || !documentVersionId) return
+    isLoading.value = true
+    try {
+      const { data } = await getReviewConversation(jobId, documentVersionId)
+      if (sequence !== loadSequence) return
+      conversationId.value = data.conversation.id
+      messages.value = data.messages.map(toAssistantMessage)
+      recommendations.value = [...data.recommended_questions].sort((a, b) => a.rank - b.rank)
+    } catch {
+      if (sequence === loadSequence) {
+        messages.value = [{ id: 'load-error', role: 'assistant', content: '加载对话失败，请稍后重试。', error: true }]
+      }
+    } finally {
+      if (sequence === loadSequence) isLoading.value = false
+    }
+  },
+  { immediate: true },
+)
+
+async function reconcileMessages() {
+  if (!conversationId.value) return
+  const { data } = await listReviewConversationMessages(conversationId.value)
+  messages.value = data.items.map(toAssistantMessage)
+}
 
 async function sendQuestion(question = input.value) {
   const normalized = question.trim()
   if (!normalized) return
+  const requestId = crypto.randomUUID()
 
-  messages.value.push({ id: nextMessageId.value++, role: 'user', content: normalized })
-  const answer: AssistantMessage = { id: nextMessageId.value++, role: 'assistant', content: '' }
+  messages.value.push({ id: `pending-user-${requestId}`, role: 'user', content: normalized })
+  // reactive：流式回调里对 answer 的变更必须走代理，否则 DOM 不刷新（问答无结果）
+  const answer = reactive<AssistantMessage>({ id: `pending-assistant-${requestId}`, role: 'assistant', content: '' })
   messages.value.push(answer)
   input.value = ''
-  if (!store?.analysisJobId || !selectedDocument.value) {
-    answer.content = '请先选择当前审查任务中已就绪的文档。'
+  if (!conversationId.value || !selectedDocument.value) {
+    answer.content = '当前审查任务中没有已就绪的文档，无法回答。'
     answer.error = true
   } else {
     isStreaming.value = true
     try {
-      let conversationId = conversationByDocument.get(selectedDocument.value.id)
-      if (!conversationId) {
-        conversationId = (await createConversation(store.analysisJobId, selectedDocument.value.id)).data.id
-        conversationByDocument.set(selectedDocument.value.id, conversationId)
-      }
-      await streamReviewAssistant(conversationId, {
-        request_id: crypto.randomUUID(), message: normalized, finding_id: props.risk?.id,
-        // 只携带真实对话历史：排除欢迎语/错误占位，避免污染模型上下文
-        history: messages.value
-          .slice(0, -2)
-          .filter((item) => item.content && !item.error && !item.content.startsWith('请选择当前任务中的一份文档'))
-          .map(({ role, content }) => ({ role, content })),
+      await streamReviewAssistant(conversationId.value, {
+        request_id: requestId, message: normalized, finding_id: props.risk?.id,
       }, {
         onStatus: (data) => { answer.status = data.type === 'retrieving' ? '正在检索当前文档' : '正在组织回答' },
         onToken: (data) => { answer.status = ''; answer.content += String(data.content ?? '') },
@@ -128,6 +128,8 @@ async function sendQuestion(question = input.value) {
           answer.status = ''
           answer.refused = data.refused
           answer.citations = Array.isArray(data.citations) ? data.citations.filter(Boolean) : []
+          // 拒答时以服务端终版文案替换已流出的内容（模型可能边流边改判）
+          if (data.refused && data.answer) answer.content = data.answer
           if (!answer.content) answer.content = data.answer
         },
         onError: (data) => { answer.status = ''; answer.error = true; answer.content = data.message || '审查问答服务暂时不可用。' },
@@ -135,20 +137,20 @@ async function sendQuestion(question = input.value) {
       if (!answer.content) answer.content = '当前审查任务没有可引用的证据，无法回答该问题。'
     } catch {
       answer.content = '审查问答服务暂时不可用，请稍后重试。'
-    } finally { isStreaming.value = false }
+      answer.error = true
+    } finally {
+      try { await reconcileMessages() } catch { /* 保留瞬时状态，稍后重新加载会恢复服务端状态 */ }
+      isStreaming.value = false
+    }
   }
   await nextTick()
   if (messageList.value) messageList.value.scrollTop = messageList.value.scrollHeight
 }
 
-function clearMessages() {
-  messages.value = [
-    {
-      id: nextMessageId.value++,
-      role: 'assistant',
-      content: '对话已清空。请选择推荐问题，或输入你想了解的条款问题。',
-    },
-  ]
+async function clearMessages() {
+  if (!conversationId.value || isStreaming.value) return
+  await clearReviewConversationMessages(conversationId.value)
+  await reconcileMessages()
 }
 </script>
 
@@ -161,10 +163,6 @@ function clearMessages() {
           <strong id="review-assistant-title">条款问答助手</strong>
         </span>
         <span data-test="assistant-context" class="assistant-context">{{ contextLabel }}</span>
-        <select v-model="selectedMembershipId" data-test="assistant-document" aria-label="选择问答文档" :disabled="isStreaming || readyDocuments.length < 2">
-          <option value="" disabled>选择文档</option>
-          <option v-for="document in readyDocuments" :key="document.id" :value="document.id">{{ document.name }}</option>
-        </select>
       </div>
       <el-tooltip content="清空对话" placement="left">
         <button type="button" class="assistant-clear" aria-label="清空问答记录" @click="clearMessages">
@@ -202,8 +200,8 @@ function clearMessages() {
     </div>
 
     <div class="assistant-suggestions" aria-label="推荐问题">
-      <button v-for="suggestion in suggestions" :key="suggestion" type="button" @click="sendQuestion(suggestion)">
-        {{ suggestion }}
+      <button v-for="suggestion in recommendations" :key="suggestion.id" type="button" @click="sendQuestion(suggestion.question)">
+        {{ suggestion.question }}
       </button>
     </div>
 
@@ -222,7 +220,7 @@ function clearMessages() {
           <button
             data-test="assistant-send"
             type="button"
-          :disabled="!input.trim() || isStreaming || !selectedDocument"
+          :disabled="!input.trim() || isStreaming || isLoading || !conversationId"
             aria-label="发送问题"
             @click="sendQuestion()"
           >
@@ -274,17 +272,6 @@ function clearMessages() {
   margin-top: 6px;
   color: var(--ink-muted);
   font-size: 11px;
-}
-
-.assistant-heading-copy select {
-  width: 100%;
-  min-height: 36px;
-  margin-top: 10px;
-  padding: 0 9px;
-  border: 1px solid var(--outline);
-  border-radius: var(--radius-sm);
-  color: var(--ink);
-  background: var(--surface);
 }
 
 .assistant-clear {

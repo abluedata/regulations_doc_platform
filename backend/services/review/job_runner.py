@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 import time
 from typing import Any, Callable, Iterable, Mapping, Sequence
@@ -144,6 +145,9 @@ class ReviewJobRunner:
         job_id: str,
         documents: Sequence[Mapping[str, Any]],
         rules: Sequence[Mapping[str, Any]],
+        *,
+        on_document_start: Callable[[int, int, Mapping[str, Any]], None] | None = None,
+        on_document_result: Callable[[Mapping[str, Any], Sequence[Mapping[str, Any]], Sequence[Mapping[str, Any]]], None] | None = None,
     ) -> dict[str, Any]:
         if self.engine is None:
             raise ValueError("run_job requires a ReviewEngine")
@@ -153,12 +157,16 @@ class ReviewJobRunner:
         document_status: dict[str, str] = {}
 
         try:
-            for document in documents:
+            for index, document in enumerate(documents):
+                if on_document_start is not None:
+                    on_document_start(index, len(documents), dict(document))
                 result = self.engine.analyze_document(document, rules)
                 findings.extend(result["findings"])
                 errors.extend(result.get("errors", []))
                 snapshots.append(result["snapshot"])
                 document_status[str(document.get("doc_id") or "")] = result["status"]
+                if on_document_result is not None:
+                    on_document_result(dict(document), list(result["findings"]), list(result.get("errors", [])))
         except LLMUnavailableError as exc:
             findings.clear()
             errors = [{"code": "llm_unavailable", "message": str(exc), "retryable": True}]
@@ -170,6 +178,8 @@ class ReviewJobRunner:
                     findings.extend(result["findings"])
                     snapshots.append(result["snapshot"])
                     document_status[str(document.get("doc_id") or "")] = "complete_degraded"
+                    if on_document_result is not None:
+                        on_document_result(dict(document), list(result["findings"]), list(result.get("errors", [])))
                 except Exception as doc_exc:  # isolate single-document failures
                     document_status[str(document.get("doc_id") or "")] = "failed"
                     errors.append(
@@ -310,14 +320,42 @@ class PersistentReviewQueue:
         self.store = store
         self.engine = engine or ReviewEngine(llm_client=None)
         self.suggestion_generator = suggestion_generator
+        self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="review-analysis")
+
+    def shutdown(self, wait: bool = True) -> None:
+        """等待在途分析结束并释放线程池（测试/进程退出前调用）。"""
+        self._executor.shutdown(wait=wait)
+
+    def start_analysis(self, job_id: str, documents: Sequence[Mapping[str, Any]], rules: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+        """异步启动分析：立即返回 queued 状态，进度/发现通过 job.events + SSE 实时推送。"""
+        self._transition(job_id, "queued", 5)
+        self._executor.submit(self.run_analysis, job_id, documents, rules)
+        return self.store.require("jobs", job_id)
 
     def run_analysis(self, job_id: str, documents: Sequence[Mapping[str, Any]], rules: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-        self._transition(job_id, "parsing", 10)
-        self._transition(job_id, "running", 40)
-        runner = ReviewJobRunner(self.engine, sleeper=lambda _seconds: None)
-        try:
-            result = runner.run_job(job_id, documents, rules)
-            findings = list(result.get("findings", []))
+        """同步执行完整分析（实时反馈路径）：逐文档持久化发现并追加 progress/issues 事件。"""
+        total = max(len(documents), 1)
+        stored_counts: list[int] = []
+
+        def _emit_document_start(index: int, _total: int, document: Mapping[str, Any]) -> None:
+            source = document.get("source") or {}
+            filename = source.get("filename") if isinstance(source, Mapping) else None
+            doc_id = document.get("doc_id") or document.get("document_id") or ""
+            self.store.append_job_event(
+                job_id,
+                "progress",
+                {
+                    "status": "running",
+                    "progress": 40 + round(55 * index / total),
+                    "document_index": index,
+                    "document_total": len(documents),
+                    "document_id": doc_id,
+                    "message": f"正在分析文档 {index + 1}/{len(documents)}：{filename or doc_id or '未命名'}",
+                },
+            )
+
+        def _persist_document(document: Mapping[str, Any], doc_findings: Sequence[Mapping[str, Any]], _doc_errors: Sequence[Mapping[str, Any]]) -> None:
+            findings = list(doc_findings)
             if self.suggestion_generator is not None and findings:
                 # 模型能力：根据常规规则为确定性发现生成贴合原文的修改建议（失败时保留规则静态建议）
                 try:
@@ -325,8 +363,27 @@ class PersistentReviewQueue:
                 except Exception:
                     for finding in findings:
                         finding.setdefault("suggestion_source", "rule")
-            findings = [self._store_finding(job_id, finding) for finding in findings]
-            self.store.append_job_event(job_id, "issues", findings)
+            stored = [self._store_finding(job_id, finding) for finding in findings]
+            stored_counts.append(len(stored))
+            visible = [finding for finding in stored if not finding.get("suppressed")]
+            if visible:
+                # 每完成一个文档即推送可见发现；suppressed 结果仅保留用于审计/报告。
+                self.store.append_job_event(job_id, "issues", visible)
+
+        runner = ReviewJobRunner(
+            self.engine,
+            sleeper=lambda _seconds: None,
+        )
+        try:
+            self._transition(job_id, "parsing", 10)
+            self._transition(job_id, "running", 40)
+            result = runner.run_job(
+                job_id,
+                documents,
+                rules,
+                on_document_start=_emit_document_start,
+                on_document_result=_persist_document,
+            )
             terminal = "complete_degraded" if result.get("status") == "complete_degraded" else "complete"
             job = self.store.update_analysis_job(
                 job_id,
@@ -349,8 +406,17 @@ class PersistentReviewQueue:
                     ],
                 },
             )
-            self.store.append_job_event(job_id, "complete", {"status": terminal, "finding_count": len(findings)})
-            self.store.append_audit("analysis.completed", "analysis_job", job_id, {"status": terminal, "finding_count": len(findings)})
+            self.store.append_job_event(
+                job_id,
+                "complete",
+                {"status": terminal, "finding_count": sum(stored_counts)},
+            )
+            self.store.append_audit(
+                "analysis.completed",
+                "analysis_job",
+                job_id,
+                {"status": terminal, "finding_count": sum(stored_counts)},
+            )
             return job
         except Exception as exc:
             self.store.append_job_event(job_id, "error", {"message": str(exc)})
@@ -384,25 +450,46 @@ class PersistentReviewQueue:
         return self.store.update_analysis_job(job_id, {"status": "cancelled", "progress": 100})
 
     def sse_events(self, job_id: str) -> Iterable[str]:
+        """SSE 事件流：先回放已落盘的历史事件，再以 0.5s 间隔尾随新事件直至终态。
+
+        终态（complete/error）yield 后立即结束；客户端断开时 StreamingResponse
+        会在下一次 yield 处触发 GeneratorExit，轮询自然终止。
+        """
         import json
 
-        job = self.store.require("jobs", job_id)
-        events = list(job.get("events") or [])
-        if not events:
-            events = [{"event": "issues", "data": []}]
-        terminal_count = 0
-        for item in events:
-            event = item.get("event", "message")
-            if event in {"complete", "error"}:
-                terminal_count += 1
-                if terminal_count > 1:
+        _terminal_events = {"complete", "error"}
+        seen = 0
+        try:
+            while True:
+                job = self.store.require("jobs", job_id)
+                events = list(job.get("events") or [])
+                status = job.get("status")
+                yielded_terminal = False
+                for item in events[seen:]:
+                    seen += 1
+                    event = item.get("event", "message")
+                    data = item.get("data", {})
+                    if event in _terminal_events:
+                        yielded_terminal = True
+                    yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+                    if yielded_terminal:
+                        return
+                # 历史中无终态事件但任务已到终态：合成终态事件补齐（如重启后丢事件/空文档任务）
+                if status in {"complete", "complete_degraded"}:
+                    yield f"event: complete\ndata: {json.dumps({'status': status}, ensure_ascii=False)}\n\n"
+                    return
+                if status == "failed":
+                    yield f"event: error\ndata: {json.dumps({'message': 'analysis failed'}, ensure_ascii=False)}\n\n"
+                    return
+                if status == "cancelled":
+                    yield f"event: error\ndata: {json.dumps({'message': 'cancelled'}, ensure_ascii=False)}\n\n"
+                    return
+                if status not in {"complete", "complete_degraded", "failed", "cancelled"}:
+                    time.sleep(0.5)
                     continue
-            data = item.get("data", {})
-            yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-        if terminal_count == 0 and job.get("status") in {"complete", "complete_degraded"}:
-            yield f"event: complete\ndata: {json.dumps({'status': job.get('status')}, ensure_ascii=False)}\n\n"
-        elif terminal_count == 0 and job.get("status") == "failed":
-            yield f"event: error\ndata: {json.dumps({'message': 'analysis failed'}, ensure_ascii=False)}\n\n"
+                return
+        except GeneratorExit:
+            return
 
     def _transition(self, job_id: str, status: str, progress: int) -> None:
         self.store.update_analysis_job(job_id, {"status": status, "progress": progress})
@@ -413,6 +500,11 @@ class PersistentReviewQueue:
         snapshot = job.get("snapshot") or {}
         title = finding.get("title") or finding.get("rule_id") or "审查风险"
         evidence = normalize_evidence_anchor(finding.get("evidence") or {}, finding)
+        severity = finding.get("severity") or "medium"
+        suppressed = (
+            str(snapshot.get("marking_mode") or "standard").lower() == "high_only"
+            and str(severity).lower() != "high"
+        )
         return self.store.create_finding(
             {
                 "analysis_job_id": job_id,
@@ -422,7 +514,7 @@ class PersistentReviewQueue:
                 "rule_version_id": finding.get("rule_version") or finding.get("rule_id"),
                 "checker_id": finding.get("confidence"),
                 "conclusion": "direct_violation",
-                "severity": finding.get("severity", "medium"),
+                "severity": severity,
                 "title": title,
                 "reason": finding.get("explanation") or finding.get("quote", ""),
                 "suggestion": finding.get("suggested_fix", ""),
@@ -430,7 +522,7 @@ class PersistentReviewQueue:
                 "evidence_anchor": evidence,
                 "reference_anchor": None,
                 "conflict_group_id": None,
-                "suppressed": False,
+                "suppressed": suppressed,
                 "quote": finding.get("quote", ""),
                 "quote_hash": finding.get("quote_hash"),
                 "suggestion_source": finding.get("suggestion_source", "rule"),

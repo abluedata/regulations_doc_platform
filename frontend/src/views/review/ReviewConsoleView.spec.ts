@@ -65,7 +65,16 @@ const finding = {
 }
 
 function jobPayload(status: string) {
-  return { id: 'job-1', status, progress: 100, revision: 0, result_revision: 0, decision_revision: 0, snapshot: {}, documents: [] }
+  return {
+    id: 'job-1',
+    status,
+    progress: 100,
+    revision: 0,
+    result_revision: 0,
+    decision_revision: 0,
+    snapshot: {},
+    documents: [{ id: 'm1', document_id: 'doc-1', document_version_id: 'v1', status: 'completed', progress: 100 }],
+  }
 }
 
 function setupJobStore(options: { status?: ReviewAnalysisStatus; findings?: Array<typeof finding> } = {}) {
@@ -116,20 +125,29 @@ describe('ReviewConsoleView', () => {
     expect(wrapper.find('.risk-card__title').text()).toBe('责任限制过高')
   })
 
-  it('approves a completed analysis', async () => {
-    const store = setupJobStore({ findings: [finding] })
+  it('shows report export in the findings header', async () => {
+    setupJobStore({ findings: [finding] })
     const { wrapper } = await mountConsole()
 
-    await wrapper.get('[data-test="approve-draft"]').trigger('click')
-
-    expect(store.analysisStatus).toBe('approved')
+    expect(wrapper.findAll('[data-test="approve-draft"]')).toHaveLength(0)
+    expect(wrapper.text()).not.toContain('拒绝更改')
+    expect(wrapper.find('.findings-heading [data-test="export-report"]')).toBeTruthy()
   })
 
-  it('disables approval while the analysis is running', async () => {
-    setupJobStore({ status: 'running', findings: [] })
+  it('shows live analysis progress with real-time finding count while running', async () => {
+    const store = setupJobStore({ status: 'running', findings: [finding] })
     const { wrapper } = await mountConsole()
 
-    expect(wrapper.get('[data-test="approve-draft"]').attributes('disabled')).toBeDefined()
+    // SSE progress 事件驱动实时进度与文案
+    store.analysisProgress = 62
+    store.analysisMessage = '正在分析文档 2/3：合同.pdf'
+    await flushPromises()
+
+    const panel = wrapper.find('[data-test="analysis-progress"]')
+    expect(panel.exists()).toBe(true)
+    expect(panel.text()).toContain('正在分析文档 2/3：合同.pdf')
+    expect(panel.text()).toContain('已标记 1 项风险')
+    expect(wrapper.find('.el-progress').exists()).toBe(true)
   })
 
   it('renders a loaded console without an internal left navigation panel', async () => {
@@ -241,6 +259,69 @@ describe('ReviewConsoleView', () => {
 
     expect(store.analysisJobId).toBe('job-9')
     expect(reviewApi.getAnalysisJob).toHaveBeenCalledWith('job-9')
+  })
+
+  it('clears the previous job when entering a single-document review without a jobId', async () => {
+    const store = useReviewStore()
+    store.files = [
+      { id: 'm1', name: '甲.pdf', size: '1 KB', progress: 100, status: 'ready', documentId: 'doc-a', documentVersionId: 'v1' },
+      { id: 'm2', name: '乙.pdf', size: '1 KB', progress: 100, status: 'ready', documentId: 'doc-b', documentVersionId: 'v2' },
+    ]
+    store.analysisJobId = 'job-stale'
+    store.analysisStatus = 'complete'
+    store.risks = [{ id: 'f-stale', level: 'high', section: '旧任务', title: '旧发现', description: '' }]
+
+    await mountConsole('/review/document/doc-b')
+
+    // 未审查文档不得串显上一个任务的发现：任务状态清空，默认打开审查配置
+    expect(store.analysisJobId).toBeNull()
+    expect(store.risks).toEqual([])
+    expect(store.analysisStatus).toBe('idle')
+    expect(store.analysisJobDocIds.size).toBe(0)
+  })
+
+  it('filters findings to the scoped document in single-document deep-link mode', async () => {
+    const store = useReviewStore()
+    store.files = [
+      { id: 'm1', name: '甲.pdf', size: '1 KB', progress: 100, status: 'ready', documentId: 'doc-a', documentVersionId: 'v1' },
+      { id: 'm2', name: '乙.pdf', size: '1 KB', progress: 100, status: 'ready', documentId: 'doc-b', documentVersionId: 'v2' },
+    ]
+    vi.mocked(reviewApi.getAnalysisJob).mockResolvedValue({
+      data: {
+        ...jobPayload('complete'),
+        id: 'job-9',
+        documents: [
+          { id: 'm1', document_id: 'doc-a', document_version_id: 'v1', status: 'completed', progress: 100 },
+          { id: 'm2', document_id: 'doc-b', document_version_id: 'v2', status: 'completed', progress: 100 },
+        ],
+      },
+    } as never)
+    vi.mocked(reviewApi.listFindings).mockResolvedValue({
+      data: {
+        items: [
+          { ...finding, document_id: 'doc-a' },
+          { ...finding, id: 'f2', title: '乙文档发现', document_id: 'doc-b' },
+        ],
+        total: 2,
+        page: 1,
+        page_size: 50,
+        result_revision: 0,
+        counts: {},
+      },
+    } as never)
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/review/document/:documentId', name: 'review-document', component: ReviewConsoleView }],
+    })
+    await router.push({ path: '/review/document/doc-b', query: { jobId: 'job-9' } })
+    await router.isReady()
+    const wrapper = mount(ReviewConsoleView, { global: { plugins: [router, ElementPlus] } })
+    await flushPromises()
+
+    // 只显示当前文档的发现，其它文档的发现被隔离
+    const cards = wrapper.findAll('.risk-card')
+    expect(cards).toHaveLength(1)
+    expect(cards[0].text()).toContain('乙文档发现')
   })
 
   it('shows the analysis entry when no job exists: config tab is the default and findings guide to it', async () => {

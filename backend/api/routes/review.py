@@ -40,7 +40,7 @@ from services.review.suggestions import generate_suggestions
 
 router = APIRouter(prefix="/review", tags=["review"])
 
-_store = ReviewStore(Path(DATA_ROOT) / "reviews")
+_store = ReviewStore(Path(DATA_ROOT) / "platform.db")
 _queue = PersistentReviewQueue(_store, suggestion_generator=generate_suggestions)
 _assistant = ReviewAssistant(_store)
 _hitl = HitlDecisionMachine(_store)
@@ -48,6 +48,7 @@ _hitl = HitlDecisionMachine(_store)
 
 def configure_for_tests(store: ReviewStore) -> None:
     global _store, _queue, _assistant, _hitl
+    _queue.shutdown(wait=True)
     _store = store
     _queue = PersistentReviewQueue(_store)
     _assistant = ReviewAssistant(_store)
@@ -265,7 +266,8 @@ def start_analysis(body: StartAnalysisRequest, idempotency_key: str | None = Hea
         _store.record_idempotency("analysis", idempotency_key, request_hash, job["id"])
     _store.append_audit("analysis.created", "analysis_job", job["id"], {"batch_id": batch["id"]})
     documents = [_document_ir(doc) for doc in docs]
-    job = _queue.run_analysis(job["id"], documents, rules)
+    # 异步执行：POST 立即返回 202，进度/发现经 SSE 实时推送
+    job = _queue.start_analysis(job["id"], documents, rules)
     return _job_response(job)
 
 
@@ -416,7 +418,49 @@ def create_conversation(body: CreateConversationRequest):
 
 @router.get("/conversations/{conversation_id}")
 def get_conversation(conversation_id: str):
-    return _require("conversations", conversation_id)
+    conversation = _require("conversations", conversation_id)
+    return conversation
+
+@router.get("/jobs/{job_id}/documents/{document_version_id}/conversation")
+def get_or_create_document_conversation(job_id: str, document_version_id: str):
+    job = _require("jobs", job_id)
+    for item in _store.list("conversations", page=1, page_size=1000)[0]:
+        if item.get("analysis_job_id") == job_id and item.get("document_version_id") == document_version_id:
+            return {
+                "conversation": {
+                    "id": item.get("id"), "job_id": item.get("analysis_job_id"),
+                    "document_id": item.get("document_id"), "document_version_id": item.get("document_version_id"),
+                },
+                "messages": item.get("messages", []),
+                "recommended_questions": item.get("recommended_questions", []),
+            }
+    for item in job.get("documents", []):
+        if item.get("document_version_id") == document_version_id:
+            created = _store.create_conversation(job_id, item)
+            return {
+                "conversation": {
+                    "id": created.get("id"), "job_id": created.get("analysis_job_id"),
+                    "document_id": created.get("document_id"), "document_version_id": created.get("document_version_id"),
+                },
+                "messages": created.get("messages", []),
+                "recommended_questions": created.get("recommended_questions", []),
+            }
+    raise HTTPException(status_code=404, detail="document_scope_mismatch")
+
+@router.get("/conversations/{conversation_id}/messages")
+def list_conversation_messages(conversation_id: str):
+    return {"items": list(_require("conversations", conversation_id).get("messages", []))}
+
+@router.post("/conversations/{conversation_id}/recommended-questions/regenerate")
+def regenerate_recommended_questions(conversation_id: str):
+    conversation = _require("conversations", conversation_id)
+    from services.review.recommended_questions import generate_recommended_questions
+    findings = [finding for finding in _store.list_findings(str(conversation.get("analysis_job_id")))
+                if finding.get("document_version_id") == conversation.get("document_version_id")]
+    questions = generate_recommended_questions(conversation, findings)
+    conversation["recommended_questions"] = questions
+    _store.save_conversation(conversation)
+    return {"items": questions}
 
 
 @router.delete("/conversations/{conversation_id}/messages", status_code=204)
@@ -425,14 +469,19 @@ def clear_conversation(conversation_id: str):
     return Response(status_code=204)
 
 
-@router.post("/conversations/{conversation_id}/stream")
+@router.post("/conversations/{conversation_id}/messages/stream")
 def stream_review_answer(conversation_id: str, body: ReviewStreamRequest):
     _require("conversations", conversation_id)
     return StreamingResponse(
-        iter(_assistant.stream_answer(conversation_id, body.model_dump())),
+        _assistant.stream_answer(conversation_id, body.model_dump()),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.post("/conversations/{conversation_id}/stream", include_in_schema=False)
+def stream_review_answer_legacy(conversation_id: str, body: ReviewStreamRequest):
+    return stream_review_answer(conversation_id, body)
 
 
 @router.post("/conversations/{conversation_id}/stop", status_code=202)

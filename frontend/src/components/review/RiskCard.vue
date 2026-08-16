@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, Close, Position, Warning } from '@element-plus/icons-vue'
+import { Check, Close, Document, Position, Warning } from '@element-plus/icons-vue'
 import { computed } from 'vue'
 import type { ReviewRisk } from '@/types'
 
@@ -65,6 +65,10 @@ const suggestionText = computed(() => props.risk.suggestion || '')
           {{ levelLabel[risk.level] }}
         </span>
         <span class="risk-card__section">{{ risk.section }}</span>
+        <span v-if="risk.documentName" class="risk-card__doc" :title="risk.documentName">
+          <el-icon aria-hidden="true"><Document /></el-icon>
+          {{ risk.documentName }}
+        </span>
         <span v-if="actionLabel" class="risk-card__action">
           <el-icon aria-hidden="true">
             <Check v-if="action === 'accepted'" />
@@ -225,6 +229,28 @@ const suggestionText = computed(() => props.risk.suggestion || '')
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.risk-card__doc {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  max-width: 40%;
+  padding: 2px 6px;
+  border: 1px solid var(--outline-soft);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  color: var(--ink-muted);
+  background: var(--surface-low);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.risk-card__doc .el-icon {
+  flex: none;
+  font-size: 11px;
 }
 
 .risk-card__action {

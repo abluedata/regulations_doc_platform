@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -29,9 +30,27 @@ class ReviewApiContractTests(unittest.TestCase):
         self.review = review
         self.store = ReviewStore(Path(self.tmp.name))
         review.configure_for_tests(self.store)
+        # 先关线程池再清理临时目录（addCleanup LIFO：后注册的先执行）
+        self.addCleanup(lambda: review._queue.shutdown(wait=True))
         app = FastAPI()
         app.include_router(review.router)
         self.client = TestClient(app)
+
+    def wait_job(self, job_id: str, timeout: float = 30.0) -> dict:
+        """分析异步执行：轮询直至任务进入终态（complete/complete_degraded/failed/cancelled）。"""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                response = self.client.get(f"/review/analysis-jobs/{job_id}")
+            except Exception as exc:  # 捕获并继续轮询：后台线程与客户端读写的瞬时竞争不应中断测试
+                print(f"[wait_job] transient GET failure: {type(exc).__name__}: {exc}")
+                time.sleep(0.05)
+                continue
+            item = response.json()
+            if item.get("status") in {"complete", "complete_degraded", "failed", "cancelled"}:
+                return item
+            time.sleep(0.05)
+        raise AssertionError(f"analysis job {job_id} did not reach a terminal state within {timeout}s")
 
     def test_rule_batch_job_decision_report_and_qa_contract(self):
         rule = self.client.post(
@@ -132,7 +151,7 @@ class ReviewApiContractTests(unittest.TestCase):
             json=job_request,
         )
         self.assertEqual(job.status_code, 202, job.text)
-        job_item = job.json()
+        job_item = self.wait_job(job.json()["id"])
         self.assertEqual(job_item["status"], "complete")
         self.assertEqual(job_item["progress"], 100)
         self.assertIn("version_tuple", job_item["snapshot"])
@@ -156,6 +175,7 @@ class ReviewApiContractTests(unittest.TestCase):
 
         stream = self.client.get(f"/review/analysis-jobs/{job_item['id']}/stream")
         self.assertEqual(stream.status_code, 200)
+        self.assertIn("event: progress", stream.text)
         self.assertIn("event: issues", stream.text)
         self.assertEqual(stream.text.count("event: complete"), 1)
 
@@ -331,7 +351,7 @@ class ReviewApiContractTests(unittest.TestCase):
                 },
             )
         self.assertEqual(job.status_code, 202, job.text)
-        job_item = job.json()
+        job_item = self.wait_job(job.json()["id"])
         self.assertEqual(job_item["status"], "complete")
 
         findings = self.client.get(f"/review/analysis-jobs/{job_item['id']}/findings").json()
@@ -539,7 +559,7 @@ class ReviewApiContractTests(unittest.TestCase):
             },
         )
         self.assertEqual(job.status_code, 202, job.text)
-        job_item = job.json()
+        job_item = self.wait_job(job.json()["id"])
         self.assertEqual(job_item["status"], "complete")
         # 配置内的取值优先于请求体
         self.assertEqual(job_item["snapshot"]["sensitivity"], 40)
@@ -578,6 +598,116 @@ class ReviewApiContractTests(unittest.TestCase):
         self.assertEqual(blocked.status_code, 409)
         self.assertEqual(blocked.json()["detail"]["code"], "invalid_configuration_rules")
         self.assertEqual(blocked.json()["detail"]["rule_version_ids"], [junk["id"]])
+
+    def test_reanalysis_high_only_suppresses_non_high_findings(self):
+        """同一文档二次分析可切换 high_only，且不删除被隐藏的审计结果。"""
+
+        def create_rule(name: str, severity: str, keyword: str) -> str:
+            response = self.client.post(
+                "/review/rules",
+                json={
+                    "name": name,
+                    "category": "compliance",
+                    "severity": severity,
+                    "definition": {
+                        "matcher": {"text_pattern": [{"kind": "keyword", "pattern": keyword}]},
+                        "description": f"检查{keyword}",
+                    },
+                    "llm_fallback": False,
+                },
+            )
+            self.assertEqual(response.status_code, 201, response.text)
+            return response.json()["id"]
+
+        high_rule_id = create_rule("高风险检查", "high", "高风险词")
+        medium_rule_id = create_rule("中风险检查", "medium", "中风险词")
+        batch_id = self.client.post(
+            "/review/batches",
+            json={"name": "marking-mode batch", "document_type": "contract", "ocr_required": False},
+        ).json()["id"]
+        membership = self.client.post(
+            f"/review/batches/{batch_id}/documents",
+            json={
+                "document_id": "doc-marking-mode",
+                "document_version_id": "ver-marking-mode",
+                "filename": "marking-mode.docx",
+                "status": "ready",
+                "ir": {
+                    "doc_id": "doc-marking-mode",
+                    "document_version_id": "ver-marking-mode",
+                    "source": {"filename": "marking-mode.docx"},
+                    "blocks": [
+                        {
+                            "block_id": "b1",
+                            "type": "paragraph",
+                            "text": "本条同时包含高风险词和中风险词。",
+                            "locator": {
+                                "kind": "docx",
+                                "locator_id": "docx-p-000000",
+                                "container_kind": "paragraph",
+                                "document_order": 0,
+                                "block_id": "b1",
+                                "text_range": {"start": 0, "end": 17, "unit": "unicode_code_point"},
+                                "precision": "exact",
+                            },
+                        }
+                    ],
+                },
+            },
+        )
+        self.assertEqual(membership.status_code, 201, membership.text)
+
+        request = {
+            "batch_id": batch_id,
+            "document_membership_ids": [membership.json()["id"]],
+            "rule_selections": [
+                {"rule_version_id": high_rule_id, "enabled": True, "overrides": {}},
+                {"rule_version_id": medium_rule_id, "enabled": True, "overrides": {}},
+            ],
+            "sensitivity": 80,
+            "analysis_profile_id": "accurate",
+            "marking_mode": "standard",
+        }
+        first = self.client.post(
+            "/review/analysis-jobs",
+            headers={"Idempotency-Key": "marking-mode-standard"},
+            json=request,
+        )
+        self.assertEqual(first.status_code, 202, first.text)
+        first_job = self.wait_job(first.json()["id"])
+        standard_findings = self.client.get(
+            f"/review/analysis-jobs/{first_job['id']}/findings"
+        ).json()
+        self.assertEqual(standard_findings["total"], 2)
+        self.assertFalse(any(item["suppressed"] for item in standard_findings["items"]))
+
+        second_request = {**request, "marking_mode": "high_only"}
+        second = self.client.post(
+            "/review/analysis-jobs",
+            headers={"Idempotency-Key": "marking-mode-high-only"},
+            json=second_request,
+        )
+        self.assertEqual(second.status_code, 202, second.text)
+        second_job = self.wait_job(second.json()["id"])
+        self.assertNotEqual(second_job["id"], first_job["id"])
+        self.assertEqual(second_job["snapshot"]["marking_mode"], "high_only")
+
+        visible = self.client.get(f"/review/analysis-jobs/{second_job['id']}/findings").json()
+        self.assertEqual(visible["total"], 1)
+        self.assertEqual(visible["items"][0]["severity"], "high")
+        self.assertFalse(visible["items"][0]["suppressed"])
+        stream = self.client.get(f"/review/analysis-jobs/{second_job['id']}/stream")
+        self.assertIn("高风险检查", stream.text)
+        self.assertNotIn("中风险检查", stream.text)
+
+        complete = self.client.get(
+            f"/review/analysis-jobs/{second_job['id']}/findings",
+            params={"include_suppressed": True},
+        ).json()
+        self.assertEqual(complete["total"], 2)
+        by_severity = {item["severity"]: item for item in complete["items"]}
+        self.assertFalse(by_severity["high"]["suppressed"])
+        self.assertTrue(by_severity["medium"]["suppressed"])
 
     def test_rule_update_creates_new_version_and_lists_latest_only(self):
         """修改规则产生不可变新版本；列表只返回每个逻辑规则的最新版本。"""
@@ -627,7 +757,7 @@ class ReviewApiContractTests(unittest.TestCase):
         self.assertEqual(len(matching), 1)
         self.assertEqual(matching[0]["version"], 2)
 
-    def test_store_startup_drift_scan_recovers_running_jobs_and_quarantines_corrupt_json(self):
+    def test_store_startup_drift_scan_recovers_running_jobs_without_json_files(self):
         store = ReviewStore(Path(self.tmp.name) / "drift")
         batch = store.create_batch({"name": "drift", "document_type": "termination_agreement"})
         job = store.create_analysis_job(
@@ -640,14 +770,24 @@ class ReviewApiContractTests(unittest.TestCase):
             }
         )
         store.update_analysis_job(job["id"], {"status": "running"})
-        (store.root / "rules" / "corrupt.json").write_text("{", encoding="utf-8")
-
         report = store.startup_drift_scan()
         recovered = store.get_analysis_job(job["id"])
 
         self.assertEqual(recovered["status"], "queued")
         self.assertEqual(report["requeued_jobs"], [job["id"]])
-        self.assertEqual(report["quarantined_files"], ["rules/corrupt.json"])
+        self.assertEqual(report["quarantined_files"], [])
+        self.assertFalse(list(store.root.parent.rglob("*.json")))
+
+    def test_document_conversation_snapshot_contract(self):
+        job = self.store.create_analysis_job({
+            "documents": [{"id": "membership-1", "document_id": "doc-1", "document_version_id": "version-1"}],
+        })
+        response = self.client.get(f"/review/jobs/{job['id']}/documents/version-1/conversation")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["conversation"]["job_id"], job["id"])
+        self.assertEqual(response.json()["messages"], [])
+        self.assertEqual(response.json()["recommended_questions"], [])
 
     def _docx_anchor(self, version_id: str) -> dict:
         return {

@@ -54,7 +54,13 @@ export const useReviewStore = defineStore('review', () => {
     marking: 'standard' | 'high_only'
   } | null>(null)
   const analysisStatus = ref<ReviewAnalysisStatus>('idle')
+  /** 实时进度：SSE progress 事件驱动（0-100） */
+  const analysisProgress = ref(0)
+  /** 实时进度文案：如「正在分析文档 2/5：合同.pdf」 */
+  const analysisMessage = ref('')
   const analysisJobId = ref<string | null>(null)
+  /** 当前任务覆盖的文档集合（document_id），用于把队列/页头限定到任务范围 */
+  const analysisJobDocIds = ref<Set<string>>(new Set())
   const analysisRevision = ref(0)
   const decisionRevision = ref(0)
   const files = ref<ReviewFile[]>([])
@@ -284,11 +290,12 @@ export const useReviewStore = defineStore('review', () => {
   }
 
   /** 把后端文档详情映射到 ReviewFile；返回是否进入终态（ready/failed） */
-  function applyDocStatus(file: ReviewFile, doc: { status?: string; stage_label?: string; error?: string | null; file_size?: number | null }) {
+  function applyDocStatus(file: ReviewFile, doc: { status?: string; stage_label?: string; error?: string | null; file_size?: number | null; progress?: number }) {
     const raw = doc.status || 'queued'
     const mapped = STATUS_TO_FILE[raw] || 'parsing'
     file.status = mapped
-    file.progress = STATUS_PROGRESS[raw] ?? file.progress
+    // 后端上报的真实进度优先；缺失时退回状态→进度映射
+    file.progress = typeof doc.progress === 'number' ? doc.progress : (STATUS_PROGRESS[raw] ?? file.progress)
     file.stageLabel = doc.stage_label || ''
     if (typeof doc.file_size === 'number' && doc.file_size > 0) file.size = formatSize(doc.file_size)
     if (mapped === 'failed') {
@@ -427,14 +434,12 @@ export const useReviewStore = defineStore('review', () => {
   }
 
   function completeAnalysis() { if (analysisStatus.value === 'running' || analysisStatus.value === 'loading') analysisStatus.value = 'complete' }
-  function approveDraft() { if (analysisStatus.value === 'complete') analysisStatus.value = 'approved' }
-  function rejectChanges() { if (analysisStatus.value === 'complete') analysisStatus.value = 'rejected' }
 
-  async function refreshJob() {
+  async function refreshJob(documentId?: string) {
     if (!analysisJobId.value) return
     const { data } = await reviewApi.getAnalysisJob(analysisJobId.value)
     applyJob(data)
-    await loadFindings()
+    await loadFindings(documentId)
   }
 
   /** deep-link 恢复：控制台直接打开时把批次文档加载到 files，供问答助手选择。 */
@@ -458,11 +463,13 @@ export const useReviewStore = defineStore('review', () => {
     }
   }
 
-  async function loadFindings() {
+  async function loadFindings(documentId?: string) {
     if (!analysisJobId.value) return
     // page_size 上限 200：避免默认 50 条截断大型文档的审查发现
     const { data } = await reviewApi.listFindings(analysisJobId.value, { page: 1, page_size: 200 })
-    risks.value = data.items.map((item) => ({
+    // 单文档模式只保留该文档的发现，避免批次任务 deep-link 时串显其它文档的结果
+    const items = documentId ? data.items.filter((item) => item.document_id === documentId) : data.items
+    risks.value = items.map((item) => ({
       id: item.id,
       level: item.severity,
       section: item.location_label || '原文定位',
@@ -476,8 +483,25 @@ export const useReviewStore = defineStore('review', () => {
       evidence: item.evidence_anchor,
       documentId: item.document_id,
       documentVersionId: item.document_version_id,
+      documentName: files.value.find((file) => file.documentId === item.document_id)?.name || item.document_id || '',
       action: item.decision?.decision_type === 'accepted' ? 'accepted' : item.decision?.decision_type === 'dismissed' ? 'dismissed' : 'pending',
     }))
+  }
+
+  /** 清空当前审查任务状态：进入单文档审查/切换任务时调用，防止串显上一个任务的发现 */
+  function resetAnalysis() {
+    streamAbort?.abort()
+    streamAbort = null
+    analysisJobId.value = null
+    analysisJobDocIds.value = new Set()
+    analysisStatus.value = 'idle'
+    analysisProgress.value = 0
+    analysisMessage.value = ''
+    analysisRevision.value = 0
+    decisionRevision.value = 0
+    risks.value = []
+    activeFindingId.value = null
+    partialFailure.value = false
   }
 
   function subscribeAnalysis() {
@@ -486,8 +510,18 @@ export const useReviewStore = defineStore('review', () => {
     streamAbort = new AbortController()
     void reviewApi.streamAnalysis(analysisJobId.value, {
       onIssues: async () => { await loadFindings() },
+      onProgress: (data) => {
+        // 实时反馈：进度条、阶段文案与状态同步更新
+        if (typeof data.progress === 'number') analysisProgress.value = Math.max(0, Math.min(100, data.progress))
+        if (typeof data.message === 'string' && data.message) analysisMessage.value = data.message
+        if (data.status && ['loading', 'queued', 'parsing', 'running'].includes(data.status)) {
+          analysisStatus.value = data.status as ReviewAnalysisStatus
+        }
+        // 每个文档完成后会随 issues 事件刷新发现；progress 事件仅更新进度
+      },
       onComplete: async (data) => {
         analysisStatus.value = data.status as ReviewAnalysisStatus
+        analysisProgress.value = 100
         partialFailure.value = data.status === 'complete_degraded'
         await refreshJob()
       },
@@ -519,6 +553,8 @@ export const useReviewStore = defineStore('review', () => {
   function applyJob(job: reviewApi.ReviewJob) {
     analysisJobId.value = job.id
     analysisStatus.value = job.status
+    analysisProgress.value = typeof job.progress === 'number' ? job.progress : analysisProgress.value
+    analysisJobDocIds.value = new Set((job.documents || []).map((item) => item.document_id).filter((id): id is string => Boolean(id)))
     analysisRevision.value = job.result_revision
     decisionRevision.value = job.decision_revision
     partialFailure.value = job.status === 'complete_degraded' || job.documents.some((item) => item.status === 'failed')
@@ -529,12 +565,12 @@ export const useReviewStore = defineStore('review', () => {
   return {
     currentStep, batchId, selectedTemplateId, sensitivity, markingMode, analysisProfile,
     configurationId, configurationRevision, configurationDirty,
-    analysisStatus, analysisJobId, analysisRevision, decisionRevision, files, templates, clauses, risks,
+    analysisStatus, analysisProgress, analysisMessage, analysisJobId, analysisJobDocIds, analysisRevision, decisionRevision, files, templates, clauses, risks,
     loadState, error, partialFailure, activeFindingId, readyCount, enabledClauses, restoring,
     nextStep, previousStep, goToStep, initialize, loadTemplates, loadRules, createRule, updateRule, createTemplate, ensureBatch,
     uploadAndAddFiles, removeFile, selectTemplate, toggleClause, setSensitivity, startAnalysis,
-    refreshJob, loadFindings, loadBatchFiles, subscribeAnalysis, decideRisk, finalizeDraft, exportReport, resetError,
-    completeAnalysis, approveDraft, rejectChanges, restoreFromServer, dispose, applyDocStatus,
+    refreshJob, loadFindings, loadBatchFiles, subscribeAnalysis, decideRisk, finalizeDraft, exportReport, resetError, resetAnalysis,
+    completeAnalysis, restoreFromServer, dispose, applyDocStatus,
     applyLatestConfiguration, saveConfiguration,
   }
 })

@@ -6,6 +6,8 @@
 
 ## Scope
 
+本文件定义审查问答流。审查分析任务的片段结果流使用独立契约 [review-analysis-events.md](review-analysis-events.md)，两者共享 SSE framing/decoder，但事件语义和恢复游标不能混用。
+
 审查问答复用原工作台的 SSE 事件名称和前端交互模型：`meta`、`status`、`token`、`done`、`error`。新增入口为：
 
 ```http
@@ -199,7 +201,7 @@ SSE disconnect does not imply cancellation. The server may complete the answer. 
 3. If the request's message exists, replaces local state using its `complete/incomplete` status and citations.
 4. If it does not exist and no generation is registered, exposes retry with a new `request_id`.
 
-Analysis job progress is not transported through this QA stream. ReviewConsole recovers analysis exclusively through `GET /api/review/analysis-jobs/{job_id}` and ignores any response whose `revision` is lower than the current store revision.
+Analysis job progress is not transported through this QA stream. ReviewConsole uses [review-analysis-events.md](review-analysis-events.md) for low-latency committed fragments and always reconciles through `GET /api/review/analysis-jobs/{job_id}` plus `/findings`; it ignores any response whose revision is lower than the current store revision.
 
 ## Shared Decoder Acceptance Cases
 

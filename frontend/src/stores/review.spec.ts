@@ -184,6 +184,46 @@ describe('review store', () => {
     expect(latest?.rule_selections).toEqual([{ rule_version_id: 'r1', enabled: true, overrides: {} }])
   })
 
+  it('applies backend-reported parse progress and falls back to the status map', async () => {
+    const store = useReviewStore()
+    const file = { id: 'm1', name: 'a.pdf', size: '1 KB', progress: 0, status: 'uploading' as const }
+    // 后端真实进度优先
+    store.applyDocStatus(file, { status: 'parsing', progress: 76, stage_label: '解析版面' })
+    expect(file.progress).toBe(76)
+    // 缺 progress 时退回状态映射
+    store.applyDocStatus(file, { status: 'chunking', stage_label: '语义分块' })
+    expect(file.progress).toBe(80)
+    // ready 定格 100
+    store.applyDocStatus(file, { status: 'ready' })
+    expect(file.progress).toBe(100)
+  })
+
+  it('applies live progress events from the analysis stream', async () => {
+    const store = useReviewStore()
+    let handlers: reviewApi.StreamHandlers | undefined
+    vi.mocked(reviewApi.streamAnalysis).mockImplementation(((_jobId: string, streamHandlers: reviewApi.StreamHandlers) => {
+      handlers = streamHandlers
+      return Promise.resolve()
+    }) as never)
+    vi.mocked(reviewApi.getAnalysisJob).mockResolvedValue({
+      data: { id: 'job-1', status: 'complete', progress: 100, revision: 0, result_revision: 0, decision_revision: 0, snapshot: {}, documents: [] },
+    } as never)
+
+    store.analysisJobId = 'job-1'
+    store.subscribeAnalysis()
+    await Promise.resolve()
+
+    handlers?.onProgress?.({ status: 'running', progress: 62, document_index: 1, document_total: 3, document_id: 'doc-1', message: '正在分析文档 2/3：合同.pdf' })
+    expect(store.analysisProgress).toBe(62)
+    expect(store.analysisMessage).toBe('正在分析文档 2/3：合同.pdf')
+    expect(store.analysisStatus).toBe('running')
+
+    handlers?.onComplete?.({ status: 'complete' })
+    await Promise.resolve()
+    expect(store.analysisProgress).toBe(100)
+    expect(store.analysisStatus).toBe('complete')
+  })
+
   it('creates a template through the backend and reloads the list', async () => {
     vi.mocked(reviewApi.listRules).mockResolvedValue({
       data: { items: [{ id: 'r1', rule_id: 'r1', name: '付款条款', category: 'finance', severity: 'medium', definition: {}, status: 'published' }], total: 1, page: 1, page_size: 50 },
@@ -221,16 +261,6 @@ describe('review store', () => {
     expect(store.selectedTemplateId).toBe('tpl-1')
   })
 
-  it('keeps approval actions inert outside the complete state', () => {
-    const store = useReviewStore()
-
-    store.completeAnalysis()
-    store.approveDraft()
-    store.rejectChanges()
-
-    expect(store.analysisStatus).toBe('idle')
-  })
-
   it('runs the analysis and completes via the real lifecycle when a batch exists', async () => {
     const store = useReviewStore()
     store.batchId = 'batch-1'
@@ -251,8 +281,6 @@ describe('review store', () => {
 
     store.completeAnalysis()
     expect(store.analysisStatus).toBe('complete')
-    store.approveDraft()
-    expect(store.analysisStatus).toBe('approved')
   })
 
   it('lists files added through the real upload and batch membership flow', async () => {

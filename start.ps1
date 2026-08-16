@@ -145,6 +145,12 @@ function Wait-Http {
 if (-not (Test-Path $Py)) {
     Write-Error "Missing venv python: $Py. Create Python 3.12 venv and pip install -r requirements.txt"
 }
+try {
+    & $Py -c "import sqlalchemy, alembic" 2>$null
+    if ($LASTEXITCODE -ne 0) { throw "missing" }
+} catch {
+    Write-Error "Missing business API dependencies in project venv. Run: $Py -m pip install -r requirements.txt"
+}
 if (-not (Test-Path $MinerUApi)) {
     Write-Error "Missing mineru-api: $MinerUApi. Run: .\venv\Scripts\pip install `"mineru[pipeline]==3.4.4`""
 }

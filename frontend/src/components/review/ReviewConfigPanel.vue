@@ -187,7 +187,7 @@ function goToUpload() {
         data-test="start-analysis"
         type="primary"
         size="large"
-        :loading="starting || review.analysisStatus === 'loading'"
+        :loading="starting || ['loading', 'queued', 'parsing', 'running'].includes(review.analysisStatus)"
         @click="startAnalysis"
       >
         开始全量分析

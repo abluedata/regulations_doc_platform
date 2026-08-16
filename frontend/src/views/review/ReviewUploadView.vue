@@ -380,7 +380,7 @@ async function goPrevious() {
 
 .file-row {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) auto var(--control-height);
+  grid-template-columns: 42px minmax(0, 1fr) auto auto var(--control-height);
   align-items: center;
   gap: 14px;
   min-height: 82px;
@@ -536,6 +536,39 @@ async function goPrevious() {
   animation: spin 1.2s linear infinite;
 }
 
+/* 「开始审查」主操作按钮：与全站 primary 风格一致（action 主色 + 悬停/按压反馈） */
+.file-row__review {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: #ffffff;
+  background: var(--action);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 160ms ease-out,
+    box-shadow 160ms ease-out,
+    transform 160ms ease-out;
+}
+
+.file-row__review:hover {
+  background: var(--action-hover);
+  box-shadow: var(--shadow-sm);
+}
+
+.file-row__review:active {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
 .icon-button {
   display: grid;
   width: var(--control-height);
@@ -547,6 +580,11 @@ async function goPrevious() {
   color: var(--ink-muted);
   background: transparent;
   cursor: pointer;
+}
+
+/* 移除按钮固定在行尾列：有/无「开始审查」按钮时位置都不变 */
+.file-row__remove {
+  grid-column: 5;
 }
 
 .icon-button:hover {
@@ -760,31 +798,21 @@ async function goPrevious() {
     height: 36px;
   }
 
+  /* 状态与操作按钮依次排在文件名下方，移除按钮固定在行尾右侧 */
   .file-row__status {
     grid-column: 2;
+    grid-row: 2;
     justify-self: start;
   }
 
   .file-row__review {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-right: 2px;
-  padding: 6px 12px;
-  border: 1px solid var(--accent, #2563eb);
-  border-radius: 6px;
-  background: var(--accent, #2563eb);
-  color: #fff;
-  font-size: 12px;
-  cursor: pointer;
-  transition: opacity 0.15s;
-}
+    grid-column: 2;
+    grid-row: 3;
+    justify-self: start;
+    margin-top: 2px;
+  }
 
-.file-row__review:hover {
-  opacity: 0.85;
-}
-
-.file-row__remove {
+  .file-row__remove {
     grid-column: 3;
     grid-row: 1 / span 2;
   }

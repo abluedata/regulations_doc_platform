@@ -23,9 +23,10 @@ Document -> DocumentVersion (existing/adapted document store)
                     | reference only
 ReviewBatch -> BatchDocument
      |
-     +-> AnalysisSnapshot -> AnalysisJob -> AnalysisDocumentJob -> Finding -> EvidenceAnchor
-                              |                                  |
-                              |                                  +-> HumanDecision(finding)
+     +-> AnalysisSnapshot -> AnalysisJob -> AnalysisDocumentJob -> AnalysisFragment -> Finding -> EvidenceAnchor
+                              |                                                      |
+                              |                                                      +-> HumanDecision(finding)
+                              +-> AnalysisEvent (durable SSE outbox)
                               +-> HumanDecision(overall)
                               +-> ReviewConversation -> ReviewMessage
                               +-> ExportArtifact
@@ -247,13 +248,15 @@ The snapshot stores enough immutable references for reproduction, not copies of 
 | `id` | UUID | Primary key |
 | `snapshot_id` | UUID | FK, immutable |
 | `parent_job_id` | UUID/null | Retry origin |
-| `status` | `queued \| running \| completed \| partial \| failed` | State machine below |
+| `status` | `queued \| parsing \| running \| complete \| complete_degraded \| failed \| cancelled` | State machine below |
 | `progress` | integer 0..100 | Non-decreasing within revision |
 | `revision` | integer | Strictly monotonic for UI ordering |
 | `attempt` | integer | Claim attempt count |
 | `lease_owner`, `lease_until` | string/datetime null | Persistent runner lease |
 | `failure_code`, `failure_message` | string/null | Overall terminal error |
 | `result_revision`, `decision_revision` | integer | Export consistency boundaries |
+| `processed_fragments`, `total_fragments`, `failed_fragments` | integer | Non-decreasing committed work counters |
+| `last_event_seq` | integer | Last durable analysis event allocated for this job |
 | `created_at`, `started_at`, `finished_at`, `updated_at` | datetime/null | UTC |
 
 ### AnalysisDocumentJob
@@ -263,13 +266,52 @@ The snapshot stores enough immutable references for reproduction, not copies of 
 | `id` | UUID | Primary key |
 | `analysis_job_id` | UUID | FK |
 | `document_id`, `document_version_id` | string | Must occur in snapshot |
-| `status` | `queued \| running \| completed \| failed` | Per-document state |
+| `status` | `queued \| running \| complete \| complete_degraded \| failed \| cancelled` | Per-document state |
 | `progress` | integer 0..100 | Non-decreasing |
 | `attempt` | integer | Increment on retry claim |
 | `failure_code`, `failure_message`, `retryable` | nullable | Required on failed |
 | `started_at`, `finished_at` | datetime/null | UTC |
 
-Unique `(analysis_job_id, document_version_id)`. A retry AnalysisJob references only failed document versions.
+Unique `(analysis_job_id, document_version_id)`. A retry AnalysisJob references only failed document versions or failed fragments.
+
+### AnalysisFragment
+
+A stable unit of committed analysis work. It is a processing/checkpoint entity, not a copy of document content.
+
+| Field | Type | Rules |
+|-------|------|-------|
+| `id` | UUID | Primary key |
+| `analysis_job_id`, `analysis_document_job_id` | UUID | FK scope |
+| `fragment_id` | string | Stable from document version + planner version + owned range |
+| `planner_version` | string | Changes when chunk ownership/context semantics change |
+| `fragment_index`, `fragment_total` | integer | Display/progress only; not identity |
+| `owned_block_start`, `owned_block_end` | integer | Half-open block range allowed to own findings |
+| `context_block_start`, `context_block_end` | integer | Half-open analysis context, may overlap neighbors |
+| `scope` | `fragment_local \| document_global` | Rule execution boundary |
+| `status` | `queued \| running \| complete \| failed \| cancelled` | State machine below |
+| `attempt` | integer | Retry attempt count |
+| `finding_count` | integer | Count inserted by the committed result |
+| `failure_code`, `failure_message`, `retryable` | nullable | Required on failed |
+| `started_at`, `finished_at`, `updated_at` | datetime/null | UTC |
+
+Unique `(analysis_document_job_id, fragment_id, scope)`. A duplicate completion returns the already committed result and does not allocate new Finding rows.
+
+### AnalysisEvent
+
+Durable per-job outbox used to replay analysis SSE after commit.
+
+| Field | Type | Rules |
+|-------|------|-------|
+| `analysis_job_id` | UUID | FK and sequence namespace |
+| `event_seq` | integer >=1 | Strictly monotonic per job; SSE `id` |
+| `event_type` | `progress \| fragment \| fragment_error \| reset \| complete \| error` | Wire event type |
+| `job_revision`, `result_revision` | integer | Ordering/reconciliation boundaries |
+| `analysis_fragment_id` | UUID/null | Present for fragment events |
+| `finding_ids_json` | array[UUID] | References immutable findings; no duplicated Finding payload source |
+| `payload_json` | object | Progress/error metadata only; no provider raw response or secrets |
+| `created_at` | datetime | UTC commit time |
+
+Primary key `(analysis_job_id, event_seq)`. Event rows are append-only. SSE materialization resolves `finding_ids_json` to immutable machine Finding fields only; current HumanDecision remains a separate REST overlay and cannot change a replayed event payload.
 
 ### Finding
 
@@ -412,22 +454,37 @@ Primary key `(scope, key)`. Same hash replays; different hash returns 409 `IDEMP
 ### AnalysisJob
 
 ```text
-queued -> running -> completed
-                  -> partial
+queued -> parsing -> running -> complete
+                             -> complete_degraded
+                             -> failed
+                             -> cancelled
+parsing/running --startup recovery--> queued
+```
+
+- `complete`: every selected fragment and document completed, including zero findings.
+- `complete_degraded`: usable partial results exist but at least one optional/model/fragment path failed or was skipped.
+- `failed`: no selected document produced a valid completed result or a fatal snapshot/job error occurred.
+- `cancelled`: cancellation was committed; already committed fragment results remain queryable.
+- Retry creates a new child job or failed-fragment attempt; terminal rows are not reset to queued.
+
+### AnalysisFragment
+
+```text
+queued -> running -> complete
                   -> failed
+                  -> cancelled
 running --expired lease/startup recovery--> queued
 ```
 
-- `completed`: every selected document completed, including zero findings.
-- `partial`: at least one document completed and at least one failed.
-- `failed`: no selected document produced a valid completed result or a fatal snapshot/job error occurred.
-- Retry creates a new child job; terminal rows are not reset to queued.
+Complete fragments are not reset. Explicit retry reclaims only failed fragments or creates equivalent tasks under a child AnalysisJob; stable finding fingerprints prevent duplicates.
 
 ### AnalysisDocumentJob
 
 ```text
-queued -> running -> completed
+queued -> running -> complete
+                  -> complete_degraded
                   -> failed
+                  -> cancelled
 running --expired lease--> queued
 ```
 
@@ -462,7 +519,7 @@ running --expired lease--> queued
 
 1. **Launch analysis**: validate references, create snapshot, job, document jobs, idempotency row and audit event in one transaction.
 2. **Publish rule/template**: validate candidate/source evidence, allocate family version, insert immutable version, update candidate status and append audit event in one transaction.
-3. **Persist findings**: insert validated findings and increment job `result_revision` atomically per completed document.
+3. **Persist fragment result**: compare-and-set AnalysisFragment, insert validated Findings by fingerprint, update Job/DocumentJob counters and revisions, allocate `event_seq`, and append AnalysisEvent in one transaction. `result_revision` increments only when the visible machine result set changes.
 4. **Decision update**: compare expected revision, upsert HumanDecision, increment `decision_revision`, append audit event atomically.
 5. **Create export**: capture current result/decision revisions, create artifact/idempotency/audit rows atomically; file is published atomically after checksum.
 6. **Claim job**: conditional update from queued or expired lease to running with lease owner/expiry; only one row can be claimed.
@@ -477,6 +534,8 @@ Required SQLite indexes:
 - `template_versions(template_id, version)` unique
 - `analysis_jobs(status, created_at)` and `(snapshot_id)`
 - `analysis_document_jobs(analysis_job_id, status)`
+- `analysis_fragments(analysis_document_job_id, status, fragment_index)` and unique `(analysis_document_job_id, fragment_id, scope)`
+- `analysis_events(analysis_job_id, event_seq)` unique
 - `findings(analysis_job_id, severity, suppressed)` and `(document_version_id)`
 - `human_decisions(analysis_job_id, finding_id)` unique
 - `review_messages(conversation_id, created_at)`

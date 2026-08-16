@@ -52,6 +52,8 @@ export interface ReviewRisk {
   evidence?: Record<string, unknown>
   documentId?: string
   documentVersionId?: string
+  /** 发现所属文档名（用于跨文档发现时在卡片上标识来源） */
+  documentName?: string
   action?: 'pending' | 'accepted' | 'dismissed'
 }
 
@@ -66,4 +68,63 @@ export interface ReviewHighlightRect {
   space?: string
   /** true 表示页级定位（precision=page），渲染为页顶横条 + 角标 */
   pageLevel?: boolean
+}
+
+export type ReviewConversationMessageStatus = 'streaming' | 'completed' | 'error' | 'cancelled' | 'interrupted'
+
+export interface ReviewConversationMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  status: ReviewConversationMessageStatus
+  request_id?: string | null
+  citations?: ReviewConversationCitation[]
+  refused?: boolean
+  refusal_code?: string | null
+}
+
+export interface ReviewConversationCitation {
+  citation_id: string
+  document_id: string
+  document_version_id: string
+  filename: string
+  block_id: string
+  chunk_id?: number | null
+  section_path?: string[]
+  quote: string
+  quote_start: number
+  quote_end: number
+  locator: Record<string, any>
+}
+
+export interface ReviewRecommendedQuestion {
+  id: string
+  question: string
+  rank: number
+  rationale?: string
+  source_refs?: Array<Record<string, unknown>>
+}
+
+export interface ReviewConversation {
+  id: string
+  job_id: string
+  document_id: string
+  document_version_id: string
+}
+
+export interface ReviewConversationSnapshot {
+  conversation: ReviewConversation
+  messages: ReviewConversationMessage[]
+  recommended_questions: ReviewRecommendedQuestion[]
+}
+
+export interface ReviewConversationMessages {
+  items: ReviewConversationMessage[]
+}
+
+export interface ReviewAssistantStreamMeta {
+  conversation_id: string
+  user_message_id: string
+  assistant_message_id: string
+  request_id: string
 }

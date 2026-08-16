@@ -38,6 +38,8 @@ export interface DocRecord {
   ext?: string
   status: DocStatus
   stage_label?: string
+  /** 解析进度 0-100：由后端状态机 + 解析 ticker 递增上报 */
+  progress?: number
   error?: string | null
   page_count?: number | null
   chunk_count?: number | null

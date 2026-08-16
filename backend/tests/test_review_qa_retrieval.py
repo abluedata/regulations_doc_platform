@@ -133,6 +133,55 @@ def test_answer_document_embeds_history_and_finding_in_prompt(tmp_path: Path):
         )
 
     assert result.answer == "保证金须在截止前缴纳。"
+
+
+def test_stream_answer_document_yields_incremental_chunks_then_final_answer(tmp_path: Path):
+    """流式问答：answer 逐段产出，引用/拒答语义与同步版一致，历史与发现透传。"""
+    from services.review.qa_answer import stream_answer_document
+
+    version = "d" * 64
+    uploads = tmp_path / "uploads"
+    version_dir = uploads / "doc-stream" / "versions" / version
+    version_dir.mkdir(parents=True)
+    ir = {
+        "blocks": [{
+            "block_id": "b1", "type": "paragraph", "text": "投标保证金应在投标截止前缴纳。",
+            "section_path": ["投标"],
+            "locator": {"kind": "pdf", "page_number": 3, "precision": "exact", "rects": []},
+        }]
+    }
+    (version_dir / "ir.json").write_text(json.dumps(ir, ensure_ascii=False), encoding="utf-8")
+    captured = {}
+
+    def fake_stream(_question, _candidates, **kwargs):
+        captured.update(kwargs)
+        yield '{"answer": "保证金须'
+        yield '在截止前缴'
+        yield '纳。", "citation_refs": ["c1"], "refused": false}'
+
+    with mock.patch("services.review.qa_retrieval.UPLOADS_DIR", uploads):
+        generator = stream_answer_document(
+            "投标保证金何时缴纳？",
+            DocumentScope("doc-stream", version),
+            "tender.pdf",
+            history=[{"role": "user", "content": "有哪些风险？"}],
+            finding={"title": "投标保证金条款"},
+            llm_stream=fake_stream,
+        )
+        chunks: list[str] = []
+        try:
+            while True:
+                chunks.append(next(generator))
+        except StopIteration as exc:
+            result = exc.value
+
+    assert chunks == ["保证金须", "在截止前缴", "纳。"]
+    assert result.answer == "保证金须在截止前缴纳。"
+    assert not result.refused
+    assert len(result.citations) == 1
+    assert result.citations[0]["document_version_id"] == version
+    assert captured["history"][0]["content"] == "有哪些风险？"
+    assert captured["finding"]["title"] == "投标保证金条款"
     assert captured["history"][0]["content"] == "有哪些风险？"
     assert captured["finding"]["title"] == "投标保证金条款"
 

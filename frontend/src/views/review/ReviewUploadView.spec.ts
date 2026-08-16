@@ -96,6 +96,48 @@ describe('ReviewUploadView', () => {
     expect(store.files.some((file) => file.name === 'Supplier_Agreement.pdf')).toBe(true)
   })
 
+  it('opens the single-PDF review page from a ready file in the queue', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/review/upload', name: 'review-upload', component: ReviewUploadView },
+        { path: '/review/document/:documentId', name: 'review-document', component: { template: '<div />' } },
+      ],
+    })
+    await router.push('/review/upload')
+    await router.isReady()
+
+    const wrapper = mount(ReviewUploadView, { global: { plugins: [router, ElementPlus] } })
+    const store = useReviewStore()
+    store.files.push({ id: 'm1', name: '合同.pdf', size: '1 KB', progress: 100, status: 'ready', documentId: 'doc-1', documentVersionId: 'v1' })
+    await wrapper.vm.$nextTick()
+
+    // 已就绪文件显示“开始审查”入口
+    const entry = wrapper.get('[data-test="review-file-m1"]')
+    expect(entry.text()).toContain('开始审查')
+    await entry.trigger('click')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(router.currentRoute.value.name).toBe('review-document')
+    expect(router.currentRoute.value.params.documentId).toBe('doc-1')
+  })
+
+  it('hides the review entry for files that are not ready', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/review/upload', name: 'review-upload', component: ReviewUploadView }],
+    })
+    await router.push('/review/upload')
+    await router.isReady()
+
+    const wrapper = mount(ReviewUploadView, { global: { plugins: [router, ElementPlus] } })
+    const store = useReviewStore()
+    store.files.push({ id: 'm2', name: '解析中.pdf', size: '1 KB', progress: 40, status: 'parsing' })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('[data-test="review-file-m2"]').exists()).toBe(false)
+  })
+
   it('removes a file from the queue', async () => {
     const router = createRouter({
       history: createMemoryHistory(),

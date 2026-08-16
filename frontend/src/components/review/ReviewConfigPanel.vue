@@ -11,6 +11,11 @@ const emit = defineEmits<{
   started: []
 }>()
 
+// 单文档审查模式：仅分析指定文档（从文件队列进入）
+const props = defineProps<{
+  documentId?: string
+}>()
+
 const review = useReviewStore()
 const router = useRouter()
 
@@ -110,7 +115,7 @@ async function startAnalysis() {
   starting.value = true
   ruleError.value = ''
   try {
-    await review.startAnalysis()
+    await review.startAnalysis(props.documentId || undefined)
     ElMessage.success('分析已启动')
     emit('started')
   } catch (err) {

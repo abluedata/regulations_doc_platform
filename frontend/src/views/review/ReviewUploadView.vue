@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import ReviewFooter from '@/components/review/ReviewFooter.vue'
 import {
   ArrowLeft,
+  Search,
   CircleCheckFilled,
   Clock,
   Close,
@@ -89,6 +90,12 @@ function removeFile(id: string) {
   review.removeFile(id)
 }
 
+/** 单 PDF 审查入口：打开针对该文档的新审查页 */
+function startSingleReview(file: ReviewFile) {
+  if (!file.documentId) return
+  void router.push({ name: 'review-document', params: { documentId: file.documentId } })
+}
+
 async function goNext() {
   await router.push({ name: 'review-console' })
 }
@@ -160,6 +167,16 @@ async function goPrevious() {
                 <el-icon aria-hidden="true"><component :is="fileStatusIcon(file)" /></el-icon>
                 {{ fileStatusLabel(file) }}
               </span>
+              <button
+                v-if="file.status === 'ready' && file.documentId"
+                class="file-row__review"
+                type="button"
+                :data-test="`review-file-${file.id}`"
+                @click="startSingleReview(file)"
+              >
+                <el-icon aria-hidden="true"><Search /></el-icon>
+                开始审查
+              </button>
               <button
                 class="icon-button file-row__remove"
                 type="button"
@@ -748,7 +765,26 @@ async function goPrevious() {
     justify-self: start;
   }
 
-  .file-row__remove {
+  .file-row__review {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: 2px;
+  padding: 6px 12px;
+  border: 1px solid var(--accent, #2563eb);
+  border-radius: 6px;
+  background: var(--accent, #2563eb);
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.file-row__review:hover {
+  opacity: 0.85;
+}
+
+.file-row__remove {
     grid-column: 3;
     grid-row: 1 / span 2;
   }

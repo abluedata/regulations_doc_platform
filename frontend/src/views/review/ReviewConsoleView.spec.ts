@@ -80,16 +80,17 @@ function setupJobStore(options: { status?: ReviewAnalysisStatus; findings?: Arra
   return store
 }
 
-async function mountConsole() {
+async function mountConsole(initialRoute = '/review/console') {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
       { path: '/review/upload', name: 'review-upload', component: { template: '<div>upload</div>' } },
       { path: '/review/rules', name: 'review-rules', component: { template: '<div>rules</div>' } },
       { path: '/review/console', name: 'review-console', component: ReviewConsoleView },
+      { path: '/review/document/:documentId', name: 'review-document', component: ReviewConsoleView },
     ],
   })
-  await router.push('/review/console')
+  await router.push(initialRoute)
   await router.isReady()
   const wrapper = mount(ReviewConsoleView, { global: { plugins: [router, ElementPlus] } })
   await flushPromises()
@@ -255,6 +256,34 @@ describe('ReviewConsoleView', () => {
     await flushPromises()
     expect(wrapper.find('.findings-empty--guide').exists()).toBe(true)
     expect(wrapper.find('.findings-empty--guide').text()).toContain('尚未开始审查')
+  })
+
+  it('scopes the console to a single PDF in document mode', async () => {
+    const store = useReviewStore()
+    store.files = [
+      { id: 'm1', name: '甲.pdf', size: '1 KB', progress: 100, status: 'ready', documentId: 'doc-a', documentVersionId: 'v1' },
+      { id: 'm2', name: '乙.pdf', size: '1 KB', progress: 100, status: 'ready', documentId: 'doc-b', documentVersionId: 'v2' },
+    ]
+    const { wrapper } = await mountConsole('/review/document/doc-b')
+
+    // 标题显示单文档标识与文件名
+    expect(wrapper.find('.crumb-badge').text()).toContain('单文档审查')
+    expect(wrapper.find('.console-header').text()).toContain('乙.pdf')
+    // 配置面板接收 documentId 范围
+    expect(wrapper.findComponent(ReviewConfigPanel).props('documentId')).toBe('doc-b')
+    // 返回文件队列按钮
+    await wrapper.get('[data-test="back-to-queue"]').trigger('click')
+    await flushPromises()
+    const router = wrapper.vm.$router
+    expect(router.currentRoute.value.name).toBe('review-upload')
+  })
+
+  it('shows a guide when the scoped document is missing from the queue', async () => {
+    const store = useReviewStore()
+    store.files = []
+    const { wrapper } = await mountConsole('/review/document/ghost')
+    expect(wrapper.findComponent(ReviewConfigPanel).exists()).toBe(false)
+    expect(wrapper.text()).toContain('未在文件队列中找到该文档')
   })
 
   it('dispatches review:locate-evidence with the evidence anchor when a risk is selected', async () => {

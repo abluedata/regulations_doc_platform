@@ -391,13 +391,16 @@ export const useReviewStore = defineStore('review', () => {
     if (Number.isFinite(value)) sensitivity.value = Math.min(100, Math.max(0, Math.round(value)))
   }
 
-  async function startAnalysis() {
+  /** 启动全量分析；documentId 传入时仅分析该文档（单 PDF 审查入口） */
+  async function startAnalysis(documentId?: string) {
     if (!batchId.value) {
       error.value = '请先上传文档并创建批次'
       analysisStatus.value = 'failed'
       throw new Error('尚未创建审查批次，请先在第一步上传文档')
     }
-    const memberships = files.value.filter((file) => file.status === 'ready' || file.status === 'queued').map((file) => file.id)
+    const memberships = files.value
+      .filter((file) => (file.status === 'ready' || file.status === 'queued') && (!documentId || file.documentId === documentId))
+      .map((file) => file.id)
     if (!memberships.length || !enabledClauses.value.length) throw new Error('至少需要一个已就绪文件和一条启用规则')
     analysisStatus.value = 'loading'
     error.value = ''

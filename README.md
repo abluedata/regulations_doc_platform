@@ -116,6 +116,11 @@ api ──→ services/review ──→ services/knowledge + services/common ─
        └── 审查配置：分析入口（置顶）+ 范本选择 + 条款设置 + 灵敏度 / 方案 / 标记模式
 ```
 
+**单 PDF 审查入口**：文件队列中每个已就绪文件自带「开始审查」按钮，点击打开
+`/review/document/:documentId` 单文档审查页——标题带「单文档审查」标识，配置面板启动分析时
+仅提交该文档（`startAnalysis(documentId)` 按 `document_id` 过滤批次成员），发现结果只属于该文档；
+任务 id 回写 URL（`?jobId=`）刷新可恢复。
+
 旧路由 `/review/templates`、`/review/rules` 重定向至控制台。无任务进入时默认打开「审查配置」选项卡作为分析入口。
 
 ### 核心后端模块（backend/services/review/）

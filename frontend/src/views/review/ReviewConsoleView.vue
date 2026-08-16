@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
+  ArrowLeft,
   Check,
   Close,
   Download,
@@ -37,15 +38,24 @@ const overallRisk = computed(() => {
   return '低'
 })
 const documentLabel = computed(() => {
+  if (singleDocMode.value) {
+    return scopedFile.value?.name ?? '未找到该文档'
+  }
   const names = review.files.filter((file) => file.status !== 'failed').map((file) => file.name)
   return names.length ? names.join('、') : '尚未关联待审文档'
 })
+
+/** 单 PDF 审查模式：/review/document/:documentId（从文件队列点击已就绪文件进入） */
+const singleDocId = computed(() => (typeof route.params.documentId === 'string' ? route.params.documentId : ''))
+const singleDocMode = computed(() => Boolean(singleDocId.value))
+const scopedFile = computed(() => review.files.find((file) => file.documentId === singleDocId.value) ?? null)
 const analysisInProgress = computed(() =>
   ['loading', 'queued', 'parsing', 'running'].includes(review.analysisStatus),
 )
 
-/** PDF 预览加载哪个文档：优先选中 finding 的文档，其次批次中第一个文档 */
+/** PDF 预览加载哪个文档：单文档模式固定为该文档，其次优先选中 finding 的文档，再批次首文档 */
 const pdfDocId = computed(() => {
+  if (singleDocMode.value) return singleDocId.value
   if (selectedRisk.value?.documentId) return selectedRisk.value.documentId
   return review.files.find((file) => file.documentId)?.documentId ?? ''
 })
@@ -74,7 +84,8 @@ onMounted(() => {
   // 支持 deep-link：/review/console?jobId=xxx 直接加载指定审查任务（刷新页面后也可恢复）
   const jobId = typeof route.query.jobId === 'string' ? route.query.jobId : ''
   if (jobId && jobId !== review.analysisJobId) review.analysisJobId = jobId
-  if (review.analysisJobId) void loadResults()
+  // 单文档模式：不自动恢复批次级任务，仅接受 ?jobId 直链，避免混入其他文档的发现
+  if (review.analysisJobId && (!singleDocMode.value || jobId)) void loadResults()
   else activeAnalysisTab.value = 'config'
 })
 
@@ -82,6 +93,10 @@ onMounted(() => {
 function onAnalysisStarted() {
   activeAnalysisTab.value = 'findings'
   void loadResults()
+  // 单文档模式：把任务 id 写入 URL，刷新页面可恢复
+  if (singleDocMode.value && review.analysisJobId && route.query.jobId !== review.analysisJobId) {
+    void router.replace({ name: 'review-document', params: { documentId: singleDocId.value }, query: { jobId: review.analysisJobId } })
+  }
 }
 
 async function loadResults() {
@@ -194,6 +209,13 @@ function goToUpload() {
   <div class="console-page">
     <div class="console-header">
       <div>
+        <p v-if="singleDocMode" class="console-header__crumb">
+          <button type="button" class="crumb-back" data-test="back-to-queue" @click="goToUpload">
+            <el-icon aria-hidden="true"><ArrowLeft /></el-icon>
+            文件队列
+          </button>
+          <span class="crumb-badge">单文档审查</span>
+        </p>
         <h1>AI 审查分析</h1>
         <p>{{ documentLabel }}</p>
       </div>
@@ -321,7 +343,14 @@ function goToUpload() {
             <ReviewAssistant v-else :risk="selectedRisk ?? undefined" @locate="locateCitation" />
           </div>
           <div v-else id="config-panel-content" class="panel-content" role="tabpanel" aria-labelledby="config-tab">
-            <ReviewConfigPanel @started="onAnalysisStarted" />
+            <div v-if="singleDocMode && !scopedFile" class="findings-empty findings-empty--guide">
+              <p>未在文件队列中找到该文档。</p>
+              <p>请返回文件队列确认文档仍处于“已就绪”状态，或重新上传。</p>
+              <div class="findings-empty__actions">
+                <el-button type="primary" @click="goToUpload">返回文件队列</el-button>
+              </div>
+            </div>
+            <ReviewConfigPanel v-else :document-id="singleDocId || undefined" @started="onAnalysisStarted" />
           </div>
         </aside>
       </div>
@@ -340,6 +369,38 @@ function goToUpload() {
   justify-content: space-between;
   gap: 20px;
   margin-bottom: 20px;
+}
+
+.console-header__crumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-size: 12px;
+}
+
+.crumb-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.crumb-back:hover {
+  color: var(--ink);
+}
+
+.crumb-badge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft, #e8f1ff);
+  color: var(--accent, #2563eb);
+  font-size: 11px;
 }
 
 .console-header h1 {
@@ -400,8 +461,8 @@ function goToUpload() {
 .console-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 460px;
-  height: calc(100vh - 280px);
-  max-height: 900px;
+  height: calc(100vh - 240px);
+  max-height: 1400px;
   min-height: 480px;
   border: 1px solid var(--outline-soft);
   background: var(--surface);

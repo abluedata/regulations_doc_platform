@@ -165,6 +165,16 @@ describe('review store', () => {
     await store.startAnalysis()
     expect(vi.mocked(reviewApi.startAnalysis).mock.calls[0]?.[0].configuration_id).toBe('cfg-1')
 
+    // 单文档范围：仅提交该文档的成员
+    store.files = [
+      { id: 'm1', name: 'a.pdf', size: '1 KB', progress: 100, status: 'ready', documentId: 'd1', documentVersionId: 'v1' },
+      { id: 'm2', name: 'b.pdf', size: '1 KB', progress: 100, status: 'ready', documentId: 'd2', documentVersionId: 'v2' },
+    ]
+    const before = vi.mocked(reviewApi.startAnalysis).mock.calls.length
+    await store.startAnalysis('d2')
+    const scopedCall = vi.mocked(reviewApi.startAnalysis).mock.calls[before]?.[0]
+    expect(scopedCall.document_membership_ids).toEqual(['m2'])
+
     // 用户停用规则B：以最新选择为准，不再携带配置 ID
     store.toggleClause('r2')
     expect(store.configurationDirty).toBe(true)

@@ -66,6 +66,13 @@ const router = createRouter({
       component: () => import('@/views/review/ReviewConsoleView.vue'),
       meta: { title: '智能审查', reviewStep: 4 },
     },
+    {
+      // 单 PDF 审查：从文件队列点击已就绪文件进入，针对单个文档
+      path: '/review/document/:documentId',
+      name: 'review-document',
+      component: () => import('@/views/review/ReviewConsoleView.vue'),
+      meta: { title: '智能审查', reviewStep: 4 },
+    },
   ],
 })
 

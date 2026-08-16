@@ -9,6 +9,6 @@ describe('review routes', () => {
         .filter((route) => route.path.startsWith('/review/'))
         .map((route) => route.path)
         .sort(),
-    ).toEqual(['/review/console', '/review/rules', '/review/templates', '/review/upload'])
+    ).toEqual(['/review/console', '/review/document/:documentId', '/review/rules', '/review/templates', '/review/upload'])
   })
 })

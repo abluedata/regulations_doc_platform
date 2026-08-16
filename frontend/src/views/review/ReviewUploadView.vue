@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import ReviewFooter from '@/components/review/ReviewFooter.vue'
 import {
   ArrowLeft,
   CircleCheckFilled,
@@ -12,8 +13,6 @@ import {
   Loading,
   UploadFilled,
 } from '@element-plus/icons-vue'
-import ReviewFooter from '@/components/review/ReviewFooter.vue'
-import ReviewStepper from '@/components/review/ReviewStepper.vue'
 import { useReviewStore } from '@/stores/review'
 import type { ReviewFile, ReviewFileStatus } from '@/types'
 
@@ -91,8 +90,7 @@ function removeFile(id: string) {
 }
 
 async function goNext() {
-  review.nextStep()
-  await router.push({ name: 'review-templates' })
+  await router.push({ name: 'review-console' })
 }
 
 async function goPrevious() {
@@ -103,8 +101,6 @@ async function goPrevious() {
 
 <template>
   <div class="review-page upload-page">
-    <ReviewStepper :current="review.currentStep" />
-
     <header class="page-heading">
       <div>
         <h1>上传文档</h1>
@@ -224,7 +220,7 @@ async function goPrevious() {
       </aside>
     </div>
 
-    <ReviewFooter @previous="goPrevious" @next="goNext">
+    <ReviewFooter previous-label="" next-label="进入智能审查" :previous-disabled="true" @next="goNext">
       已有 {{ readyCount }} 个文件就绪，所有上传均已加密并在本地处理。
     </ReviewFooter>
   </div>
@@ -232,7 +228,7 @@ async function goPrevious() {
 
 <style scoped>
 .review-page {
-  width: min(1440px, 100%);
+  width: min(1600px, 100%);
   margin: 0 auto;
 }
 

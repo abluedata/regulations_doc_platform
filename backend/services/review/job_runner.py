@@ -300,9 +300,16 @@ class PersistentReviewQueue:
     restart can replay authoritative status and SSE history from disk.
     """
 
-    def __init__(self, store: Any, engine: ReviewEngine | None = None) -> None:
+    def __init__(
+        self,
+        store: Any,
+        engine: ReviewEngine | None = None,
+        *,
+        suggestion_generator: Callable[[Sequence[Mapping[str, Any]]], list[dict[str, Any]]] | None = None,
+    ) -> None:
         self.store = store
         self.engine = engine or ReviewEngine(llm_client=None)
+        self.suggestion_generator = suggestion_generator
 
     def run_analysis(self, job_id: str, documents: Sequence[Mapping[str, Any]], rules: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         self._transition(job_id, "parsing", 10)
@@ -310,7 +317,15 @@ class PersistentReviewQueue:
         runner = ReviewJobRunner(self.engine, sleeper=lambda _seconds: None)
         try:
             result = runner.run_job(job_id, documents, rules)
-            findings = [self._store_finding(job_id, finding) for finding in result.get("findings", [])]
+            findings = list(result.get("findings", []))
+            if self.suggestion_generator is not None and findings:
+                # 模型能力：根据常规规则为确定性发现生成贴合原文的修改建议（失败时保留规则静态建议）
+                try:
+                    findings = self.suggestion_generator(findings)
+                except Exception:
+                    for finding in findings:
+                        finding.setdefault("suggestion_source", "rule")
+            findings = [self._store_finding(job_id, finding) for finding in findings]
             self.store.append_job_event(job_id, "issues", findings)
             terminal = "complete_degraded" if result.get("status") == "complete_degraded" else "complete"
             job = self.store.update_analysis_job(
@@ -418,6 +433,7 @@ class PersistentReviewQueue:
                 "suppressed": False,
                 "quote": finding.get("quote", ""),
                 "quote_hash": finding.get("quote_hash"),
+                "suggestion_source": finding.get("suggestion_source", "rule"),
                 "decision": None,
             }
         )

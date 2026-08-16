@@ -11,7 +11,7 @@
 evidence_spans.json 结构：
   {"spans": [{"text": "...", "bbox": [x0, y0, x1, y1], "page": 1}, ...],
    "task_id": "...", "engine": "..."}
-bbox 为 PDF 原始坐标（pt），原点左上、y 轴向下；page 为 1-based 页码。
+bbox 为 MinerU 归一化 0..1000 坐标（相对页，原点左上、y 轴向下）；page 为 1-based 页码。
 """
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ from typing import Any
 
 from core.config import DATA_ROOT
 from services.document_store import (
+    UPLOADS_DIR,
     list_docs,
     load_ir,
     load_meta,
@@ -35,6 +36,177 @@ from services.document_store import (
 )
 
 EVIDENCE_SPANS_FILENAME = "evidence_spans.json"
+
+# 进程级缓存：字符级裁剪时避免每条 finding 重复解析 PDF
+_pdf_cache: dict[str, Any] = {}
+_pdf_cache_order: list[str] = []
+_page_words_cache: dict[tuple[str, int], list[dict]] = {}
+_PDF_CACHE_MAX = 4
+_PAGE_WORDS_CACHE_MAX = 48
+
+
+def _open_pdf_cached(doc_id: str) -> Any | None:
+    """延迟导入 + LRU 缓存 pdfplumber PDF 对象。"""
+    if doc_id in _pdf_cache:
+        return _pdf_cache[doc_id]
+    path = UPLOADS_DIR / doc_id / "original.pdf"
+    if not path.is_file():
+        return None
+    try:
+        import pdfplumber
+    except ImportError:
+        return None
+    if len(_pdf_cache) >= _PDF_CACHE_MAX and _pdf_cache_order:
+        evict = _pdf_cache_order.pop(0)
+        try:
+            _pdf_cache.pop(evict).close()
+        except Exception:
+            pass
+        for key in [key for key in _page_words_cache if key[0] == evict]:
+            _page_words_cache.pop(key, None)
+    try:
+        pdf = pdfplumber.open(str(path))
+    except Exception:
+        return None
+    _pdf_cache[doc_id] = pdf
+    _pdf_cache_order.append(doc_id)
+    return pdf
+
+
+def refine_quote_bbox(
+    doc_id: str, page_no: int, quote: str, *, span_bbox: list[float] | None = None
+) -> list[float] | None:
+    """用 pdfplumber 在页内精确定位 quote 的字符级 bbox。
+
+    返回 normalized-1000 [x0, y0, x1, y1]（左上原点）；定位失败返回 None。
+    基于 page.chars 滑动窗口：只在同一行内匹配；span_bbox 提供时，候选必须与
+    其空间重叠（避免双层 PDF 的 OCR 文本层坐标不一致导致选错层）。
+    """
+    q = re.sub(r"\s+", "", quote)
+    if len(q) < 2:
+        return None
+    chars = _chars_for_page(doc_id, page_no)
+    if not chars:
+        return None
+    pdf = _open_pdf_cached(doc_id)
+    if pdf is None:
+        return None
+    page = pdf.pages[page_no - 1]
+    pw, ph = float(page.width), float(page.height)
+    if pw <= 0 or ph <= 0:
+        return None
+    flat = [re.sub(r"\s+", "", str(char.get("text") or "")) for char in chars]
+    best: list[float] | None = None
+    best_area = float("inf")
+    for i in range(len(chars)):
+        buf = ""
+        for j in range(i, min(i + len(q) * 4 + 8, len(chars))):
+            buf += flat[j]
+            if q not in buf:
+                continue
+            pos = buf.rfind(q)
+            start_idx = i + pos
+            end_idx = start_idx + len(q) - 1
+            if end_idx > j or start_idx >= len(chars):
+                break
+            c0, c1 = chars[start_idx], chars[end_idx]
+            mid0 = (float(c0["top"]) + float(c0["bottom"])) / 2
+            mid1 = (float(c1["top"]) + float(c1["bottom"])) / 2
+            height0 = max(0.1, float(c0["bottom"]) - float(c0["top"]))
+            height1 = max(0.1, float(c1["bottom"]) - float(c1["top"]))
+            if abs(mid1 - mid0) > (height0 + height1) / 2 + 1:
+                break  # 跨行：窗口继续向右只会更宽，放弃该起点
+            candidate = [
+                max(0.0, min(1000.0, float(c0["x0"]) / pw * 1000)),
+                max(0.0, min(1000.0, min(float(c0["top"]), float(c1["top"])) / ph * 1000)),
+                max(0.0, min(1000.0, float(c1["x1"]) / pw * 1000)),
+                max(0.0, min(1000.0, max(float(c0["bottom"]), float(c1["bottom"])) / ph * 1000)),
+            ]
+            if candidate[2] <= candidate[0] or candidate[3] <= candidate[1]:
+                break
+            if span_bbox is not None and not _within(candidate, span_bbox):
+                break  # 不同文本层/不同位置：该起点方向无效
+            area = (candidate[2] - candidate[0]) * (candidate[3] - candidate[1])
+            if area < best_area:
+                best_area = area
+                best = candidate
+            break
+    return best
+
+
+def _within(box_a: list[float], box_b: list[float], overflow_ratio: float = 0.2) -> bool:
+    """box_a 是否基本位于 box_b 内部（候选高亮框应在 span 框内）。"""
+    ax0, ay0, ax1, ay1 = box_a
+    bx0, by0, bx1, by1 = box_b
+    dx = max(0.0, bx0 - ax0) + max(0.0, ax1 - bx1)
+    dy = max(0.0, by0 - ay0) + max(0.0, ay1 - by1)
+    width = max(1e-9, ax1 - ax0)
+    height = max(1e-9, ay1 - ay0)
+    if dx > width * 0.5 or dy > height * 0.5:
+        return False
+    return (dx * height + dy * width) / (width * height) <= overflow_ratio
+
+
+def _bbox_hits_quote(
+    doc_id: str, page_no: int, quote: str, bbox: list[float], min_iou: float = 0.3
+) -> bool:
+    """bbox 是否覆盖页内至少一处 quote 字符窗口（字符级校验）。"""
+    q = re.sub(r"\s+", "", quote)
+    if len(q) < 2:
+        return False
+    chars = _chars_for_page(doc_id, page_no)
+    if not chars:
+        return False
+    pdf = _open_pdf_cached(doc_id)
+    if pdf is None:
+        return False
+    page = pdf.pages[page_no - 1]
+    pw, ph = float(page.width), float(page.height)
+    if pw <= 0 or ph <= 0:
+        return False
+    flat = [re.sub(r"\s+", "", str(char.get("text") or "")) for char in chars]
+    buf = ""
+    for idx in range(len(flat)):
+        buf += flat[idx]
+        if not buf.endswith(q):
+            continue
+        start = idx - len(q) + 1
+        c0, c1 = chars[start], chars[idx]
+        window = [
+            float(c0["x0"]) / pw * 1000,
+            min(float(c0["top"]), float(c1["top"])) / ph * 1000,
+            float(c1["x1"]) / pw * 1000,
+            max(float(c0["bottom"]), float(c1["bottom"])) / ph * 1000,
+        ]
+        ox = max(0.0, min(bbox[2], window[2]) - max(bbox[0], window[0]))
+        oy = max(0.0, min(bbox[3], window[3]) - max(bbox[1], window[1]))
+        inter = ox * oy
+        if inter <= 0:
+            continue
+        union = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1]) + (window[2] - window[0]) * (window[3] - window[1]) - inter
+        if inter / max(1e-9, union) >= min_iou:
+            return True
+    return False
+
+
+def _chars_for_page(doc_id: str, page_no: int) -> list[dict]:
+    """缓存 pdfplumber page.chars（含字符级 bbox）。"""
+    key = ("chars", doc_id, page_no)
+    cached = _page_words_cache.get(key)
+    if cached is not None:
+        return cached
+    pdf = _open_pdf_cached(doc_id)
+    if pdf is None or page_no < 1 or page_no > len(pdf.pages):
+        return []
+    try:
+        chars = [dict(c) for c in pdf.pages[page_no - 1].chars]
+    except Exception:
+        chars = []
+    if len(_page_words_cache) >= _PAGE_WORDS_CACHE_MAX:
+        _page_words_cache.pop(next(iter(_page_words_cache)), None)
+    _page_words_cache[key] = chars
+    return chars
+
 
 # 解析时间窗左右放宽量（mineru job 目录 mtime 与文档解析时间段对齐）
 _PARSE_WINDOW_SLACK = timedelta(minutes=10)
@@ -102,27 +274,112 @@ def spans_from_content_list(
     return payload
 
 
-def find_span_for_quote(spans: list[dict], quote: Any) -> dict | None:
-    """返回归一化文本包含 quote 的 span；找不到返回 None。"""
+def locate_quote_span_in_block(
+    spans: list[dict], block_text: str, quote: str
+) -> dict | None:
+    """在 block 文本内定位 quote 所在的 span（正确处理重复文本实例）。
+
+    spans 按内容顺序排列。先以最长公共前缀找到 block 在 span 序列中的起点，
+    再从该起点累计 span 文本，返回覆盖 quote 偏移的 span。找不到返回 None。
+    """
+    q = re.sub(r"\s+", "", quote)
+    b = re.sub(r"\s+", "", block_text)
+    if not q or not b:
+        return None
+    qpos = b.find(q)
+    if qpos < 0:
+        return None
+    flat_spans = [re.sub(r"\s+", "", normalize_text(span.get("text"))) for span in (spans or []) if isinstance(span, dict)]
+    if not flat_spans:
+        return None
+    # 1) 以最长公共前缀定位 block 起点
+    best_start = 0
+    best_prefix = 0
+    for start in range(len(flat_spans)):
+        buf = ""
+        for j in range(start, min(start + 15, len(flat_spans))):
+            buf += flat_spans[j]
+            limit = min(len(b), len(buf))
+            overlap = 0
+            while overlap < limit and buf[overlap] == b[overlap]:
+                overlap += 1
+            if overlap > best_prefix:
+                best_prefix = overlap
+                best_start = start
+    if best_prefix < 6:
+        return None
+    # 2) 从起点累计，找覆盖 [qpos, qpos+len(q)) 的 span
+    acc = 0
+    for idx in range(best_start, len(spans)):
+        if not isinstance(spans[idx], dict):
+            continue
+        text = flat_spans[idx]
+        if acc <= qpos and qpos + len(q) <= acc + len(text):
+            return spans[idx]
+        acc += len(text)
+    # 3) 跨 span 边界：返回覆盖 quote 起点的 span
+    acc = 0
+    for idx in range(best_start, len(spans)):
+        if not isinstance(spans[idx], dict):
+            continue
+        text = flat_spans[idx]
+        if acc <= qpos < acc + len(text):
+            return spans[idx]
+        acc += len(text)
+    return None
+
+
+def load_version_ir_blocks(doc_id: str, version_id: str) -> list[dict]:
+    """读取版本 ir.json 的 blocks；不可用返回 []。"""
+    directory = _resolve_version_dir(doc_id, version_id or None)
+    if directory is None:
+        return []
+    path = directory / "ir.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    blocks = payload.get("blocks") if isinstance(payload, dict) else None
+    return [dict(block) for block in blocks if isinstance(block, dict)] or []
+
+
+def find_span_for_quote(
+    spans: list[dict], quote: Any, page_number: int | None = None
+) -> dict | None:
+    """返回归一化文本包含 quote 的 span；找不到返回 None。
+
+    page_number 提供时优先该页；多个候选时取最精匹配（quote 占 span 文本比例最高），
+    避免命中目录页整行等大框噪音 span。
+    """
     q = normalize_text(quote)
     if not q:
         return None
-    fallback: list[dict] = []
+    q_flat = re.sub(r"\s+", "", q)
+    candidates: list[tuple[float, dict]] = []
     for span in spans or []:
         if not isinstance(span, dict):
             continue
         text = normalize_text(span.get("text"))
         if not text:
             continue
+        ratio = 0.0
         if q in text:
-            return span
-        fallback.append(span)
-    # 兜底：去掉全部空白再匹配（PDF 换行 / 断字导致的空白错位）
-    q_flat = re.sub(r"\s+", "", q)
-    if len(q_flat) >= 2:
-        for span in fallback:
-            if q_flat in re.sub(r"\s+", "", normalize_text(span.get("text"))):
-                return span
+            ratio = len(q) / max(1, len(text))
+        elif len(q_flat) >= 2 and q_flat in re.sub(r"\s+", "", text):
+            # 空白错位兜底，权重减半
+            ratio = 0.5 * (len(q_flat) / max(1, len(re.sub(r"\s+", "", text))))
+        if ratio > 0:
+            candidates.append((ratio, span))
+    if not candidates:
+        return None
+    if page_number is not None:
+        page_candidates = [
+            item for item in candidates if int(item[1]["page"]) == int(page_number)
+        ]
+        if page_candidates:
+            candidates = page_candidates
+    # 最精匹配优先；平手取先出现
+    return max(candidates, key=lambda item: item[0])[1]
     return None
 
 
@@ -474,18 +731,55 @@ def enrich_evidence_anchor(finding: dict) -> dict:
     if not doc_id or not quote:
         return finding
     spans = ensure_doc_evidence_spans(doc_id, version_id or None)
-    span = find_span_for_quote((spans or {}).get("spans") or [], quote)
+    span_list = (spans or {}).get("spans") or []
+    # 优先块级定位：先找到 finding 的 block，再在该 block 文本内定位 quote 所在 span，
+    # 正确处理同页重复文本实例（SC-003）。
+    span = None
+    block_ids = anchor.get("block_ids") or []
+    if block_ids:
+        blocks = load_version_ir_blocks(doc_id, version_id or "")
+        block_by_id = {str(block.get("block_id")): block for block in blocks}
+        block = block_by_id.get(str(block_ids[0]))
+        if block:
+            block_text = str(block.get("text") or block.get("markdown") or "")
+            span = locate_quote_span_in_block(span_list, block_text, quote)
+    if span is None:
+        span = find_span_for_quote(
+            span_list,
+            quote,
+            page_number=anchor.get("page_number"),
+        )
     if span is None:
         return finding
     page = int(span["page"])
-    x0, y0, x1, y1 = (float(v) for v in span["bbox"])
+    bbox = [float(v) for v in span["bbox"]]
+    # 大框裁剪：span 远长于 quote（整行/整段）时，用 pdfplumber 字符级定位
+    span_text = normalize_text(span.get("text") or "")
+    q = normalize_text(quote)
+    if span_text and len(q) / max(1, len(span_text)) < 0.7:
+        refined = refine_quote_bbox(doc_id, page, quote, span_bbox=bbox)
+        if refined:
+            bbox = refined
+    if _chars_for_page(doc_id, page) and not _bbox_hits_quote(doc_id, page, quote, bbox):
+        # 字符级校验失败：按规范降级为页级定位，不展示错误高亮（FR-023/FR-025）
+        degraded = dict(anchor)
+        degraded.update(
+            {
+                "precision": "page",
+                "validation_status": "degraded",
+                "page_number": page,
+                "rects": [],
+            }
+        )
+        return {**finding, "evidence_anchor": degraded}
+    x0, y0, x1, y1 = bbox
     enriched_anchor = dict(anchor)
     enriched_anchor.update(
         {
             "precision": "rect",
             "validation_status": "exact",
             "page_number": page,
-            "coordinate_space": "pdf-pt",
+            "coordinate_space": "normalized-1000-top-left",
             "rects": [
                 {
                     "page": page,
@@ -493,7 +787,7 @@ def enrich_evidence_anchor(finding: dict) -> dict:
                     "y0": y0,
                     "x1": x1,
                     "y1": y1,
-                    "space": "pdf-pt",
+                    "space": "normalized-1000-top-left",
                 }
             ],
         }

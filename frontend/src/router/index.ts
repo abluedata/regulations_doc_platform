@@ -46,16 +46,19 @@ const router = createRouter({
       meta: { title: '文档上传', reviewStep: 1 },
     },
     {
+      path: '/review/upload',
+      name: 'review-upload',
+      component: () => import('@/views/review/ReviewUploadView.vue'),
+      meta: { title: '文档上传', reviewStep: 1 },
+    },
+    {
+      // 范本选择与条款设置已集成进智能审查页：旧路由重定向，保证入口兼容
       path: '/review/templates',
-      name: 'review-templates',
-      component: () => import('@/views/review/ReviewTemplatesView.vue'),
-      meta: { title: '范本选择', reviewStep: 2 },
+      redirect: { name: 'review-console' },
     },
     {
       path: '/review/rules',
-      name: 'review-rules',
-      component: () => import('@/views/review/ReviewRulesView.vue'),
-      meta: { title: '条款设置', reviewStep: 3 },
+      redirect: { name: 'review-console' },
     },
     {
       path: '/review/console',

@@ -78,8 +78,8 @@ describe('ReviewPdfPreview', () => {
     expect(mockGetDocument).toHaveBeenCalledWith(expect.objectContaining({ url: '/api/docs/doc-1/file' }))
     expect(wrapper.emitted('loaded')).toEqual([[5]])
     expect(wrapper.find('[data-test="pdf-loading"]').exists()).toBe(false)
-    expect(wrapper.find('[data-test="pdf-page-indicator"]').text()).toContain('1')
-    expect(wrapper.find('[data-test="pdf-page-indicator"]').text()).toContain('5')
+    expect((wrapper.find('[data-test="pdf-page-input"]').element as HTMLInputElement).value).toBe('1')
+    expect(wrapper.find('[data-test="pdf-page-total"]').text()).toContain('5')
     expect(wrapper.find('[data-test="pdf-canvas"]').exists()).toBe(true)
   })
 
@@ -93,12 +93,12 @@ describe('ReviewPdfPreview', () => {
     await flushPromises()
 
     expect(wrapper.emitted('page-change')?.at(-1)).toEqual([2])
-    expect(wrapper.get('[data-test="pdf-page-indicator"]').text()).toContain('2')
+    expect((wrapper.get('[data-test="pdf-page-input"]').element as HTMLInputElement).value).toBe('2')
     expect(wrapper.get('[data-test="pdf-prev"]').attributes('disabled')).toBeUndefined()
 
     await wrapper.get('[data-test="pdf-prev"]').trigger('click')
     await flushPromises()
-    expect(wrapper.get('[data-test="pdf-page-indicator"]').text()).toContain('1')
+    expect((wrapper.get('[data-test="pdf-page-input"]').element as HTMLInputElement).value).toBe('1')
   })
 
   it('jumps to the activePage prop when it changes', async () => {
@@ -109,7 +109,7 @@ describe('ReviewPdfPreview', () => {
     await flushPromises()
 
     expect(wrapper.emitted('page-change')?.at(-1)).toEqual([4])
-    expect(wrapper.get('[data-test="pdf-page-indicator"]').text()).toContain('4')
+    expect((wrapper.get('[data-test="pdf-page-input"]').element as HTMLInputElement).value).toBe('4')
   })
 
   it('renders pdf-pt highlight rects scaled to the canvas size', async () => {
@@ -193,17 +193,17 @@ describe('ReviewPdfPreview', () => {
     const wrapper = mountPreview()
     await waitRender()
 
-    expect(wrapper.get('[data-test="pdf-zoom-value"]').text()).toBe('100%')
+    expect((wrapper.get('[data-test="pdf-zoom-input"]').element as HTMLInputElement).value).toBe('100')
 
     await wrapper.get('[data-test="pdf-zoom-in"]').trigger('click')
-    expect(wrapper.get('[data-test="pdf-zoom-value"]').text()).toBe('110%')
+    expect((wrapper.get('[data-test="pdf-zoom-input"]').element as HTMLInputElement).value).toBe('110')
 
     await wrapper.get('[data-test="pdf-zoom-out"]').trigger('click')
-    expect(wrapper.get('[data-test="pdf-zoom-value"]').text()).toBe('100%')
+    expect((wrapper.get('[data-test="pdf-zoom-input"]').element as HTMLInputElement).value).toBe('100')
 
     // 放大到 200% 后按钮禁用
     for (let i = 0; i < 12; i += 1) await wrapper.get('[data-test="pdf-zoom-in"]').trigger('click')
-    expect(wrapper.get('[data-test="pdf-zoom-value"]').text()).toBe('200%')
+    expect((wrapper.get('[data-test="pdf-zoom-input"]').element as HTMLInputElement).value).toBe('200')
     expect(wrapper.get('[data-test="pdf-zoom-in"]').attributes('disabled')).toBeDefined()
   })
 

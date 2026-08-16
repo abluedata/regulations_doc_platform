@@ -112,6 +112,12 @@ class ReviewStore:
         self._write_path(self._path(collection, record_id), record)
         return record
 
+    def delete_record(self, collection: str, record_id: str) -> None:
+        path = self._path(collection, record_id)
+        if not path.exists():
+            raise KeyError(f"{collection} record not found: {record_id}")
+        path.unlink()
+
     def require(self, collection: str, record_id: str) -> dict[str, Any]:
         record = self.get(collection, record_id)
         if record is None:
@@ -162,6 +168,21 @@ class ReviewStore:
                 return dict(item)
         raise KeyError(f"batch membership not found: {membership_id}")
 
+    def set_batch_document_status(self, batch_id: str, membership_id: str, status: str) -> dict[str, Any]:
+        """同步批成员状态（自愈）：成员状态滞后于文档管线事实时持久化修正。"""
+        batch = self.require("batches", batch_id)
+        updated: dict[str, Any] | None = None
+        for item in batch.get("documents", []):
+            if item.get("id") == membership_id:
+                item["status"] = status
+                updated = dict(item)
+                break
+        if updated is None:
+            raise KeyError(f"batch membership not found: {membership_id}")
+        batch["revision"] = int(batch.get("revision", 0)) + 1
+        self.put("batches", batch)
+        return updated
+
     # Rules/templates/configurations -------------------------------------
 
     def create_rule(self, payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -178,6 +199,28 @@ class ReviewStore:
             "configurable_fields": payload.get("configurable_fields", []),
             "status": payload.get("status", "published"),
             "llm_fallback": bool(payload.get("llm_fallback", False)),
+            "published_at": utc_now(),
+        }
+        return self.put("rules", record)
+
+    def create_rule_version(self, rule_version_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        """对规则的可变字段产生新版本：旧版本保持不可变（FR-018），新版本发布。"""
+        current = self.require("rules", rule_version_id)
+        definition = dict(current.get("definition") or {})
+        if isinstance(payload.get("definition"), Mapping):
+            definition.update(dict(payload["definition"]))
+        record = {
+            "id": str(uuid4()),
+            "rule_id": str(current.get("rule_id") or current["id"]),
+            "name": str(payload.get("name") or current.get("name")),
+            "category": payload.get("category") or current.get("category", "general"),
+            "version": int(current.get("version", 1)) + 1,
+            "severity": payload.get("severity") or current.get("severity", "medium"),
+            "definition": definition,
+            "source_anchor": current.get("source_anchor"),
+            "configurable_fields": list(current.get("configurable_fields") or []),
+            "status": "published",
+            "llm_fallback": bool(current.get("llm_fallback", False)),
             "published_at": utc_now(),
         }
         return self.put("rules", record)

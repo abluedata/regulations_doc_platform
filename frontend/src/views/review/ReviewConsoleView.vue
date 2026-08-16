@@ -1,34 +1,29 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   Check,
   Close,
   Download,
-  View,
 } from '@element-plus/icons-vue'
 import RiskCard from '@/components/review/RiskCard.vue'
+import ReviewConfigPanel from '@/components/review/ReviewConfigPanel.vue'
 import ReviewAssistant from '@/components/review/ReviewAssistant.vue'
-import ReviewFooter from '@/components/review/ReviewFooter.vue'
 import ReviewPdfPreview from '@/components/review/ReviewPdfPreview.vue'
-import ReviewStepper from '@/components/review/ReviewStepper.vue'
 import { useReviewStore } from '@/stores/review'
-import { downloadExportArtifact } from '@/api/review'
+import { downloadExportArtifact, type ReviewCitation } from '@/api/review'
 import type { ReviewHighlightRect, ReviewRisk } from '@/types'
 
 const review = useReviewStore()
 const router = useRouter()
 const route = useRoute()
-const activeAnalysisTab = ref<'findings' | 'assistant'>('findings')
+const activeAnalysisTab = ref<'findings' | 'assistant' | 'config'>('findings')
 const loading = ref(false)
 const loadError = ref('')
 const exporting = ref(false)
 const exportError = ref('')
 const decidingFindingId = ref('')
 const decideError = ref('')
-const narrowMode = ref(false)
-const narrowPane = ref<'preview' | 'detail'>('preview')
-let narrowQuery: MediaQueryList | null = null
 
 const hasJob = computed(() => Boolean(review.analysisJobId))
 const selectedRisk = computed(
@@ -48,12 +43,6 @@ const documentLabel = computed(() => {
 const analysisInProgress = computed(() =>
   ['loading', 'queued', 'parsing', 'running'].includes(review.analysisStatus),
 )
-const severityMeta = computed(() => {
-  const level = selectedRisk.value?.level ?? 'low'
-  if (level === 'high') return { label: '高风险', type: 'danger' as const }
-  if (level === 'medium') return { label: '中风险', type: 'warning' as const }
-  return { label: '低风险', type: 'info' as const }
-})
 
 /** PDF 预览加载哪个文档：优先选中 finding 的文档，其次批次中第一个文档 */
 const pdfDocId = computed(() => {
@@ -70,32 +59,36 @@ const highlightRects = computed<ReviewHighlightRect[]>(() => {
   if (!evidence) return []
   return evidenceRects(evidence)
 })
+/** 全部发现所在页：缩略图风险点标记（不依赖选中） */
+const findingRiskPages = computed(() =>
+  review.risks
+    .map((risk) => Number((risk.evidence as Record<string, unknown> | undefined)?.page_number))
+    .filter((page) => Number.isFinite(page) && page > 0)
+    .map((page) => Math.round(page)),
+)
 
 onMounted(() => {
   review.goToStep(Number(route.meta.reviewStep) || 4)
+  // 集成页：加载范本、规则、已保存配置并恢复最近批次
+  void review.initialize()
   // 支持 deep-link：/review/console?jobId=xxx 直接加载指定审查任务（刷新页面后也可恢复）
   const jobId = typeof route.query.jobId === 'string' ? route.query.jobId : ''
   if (jobId && jobId !== review.analysisJobId) review.analysisJobId = jobId
   if (review.analysisJobId) void loadResults()
-  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
-    narrowQuery = window.matchMedia('(max-width: 1199px)')
-    narrowMode.value = narrowQuery.matches
-    narrowQuery.addEventListener('change', onNarrowChange)
-  }
+  else activeAnalysisTab.value = 'config'
 })
 
-onBeforeUnmount(() => {
-  if (narrowQuery) narrowQuery.removeEventListener('change', onNarrowChange)
-})
-
-function onNarrowChange(event: MediaQueryListEvent) {
-  narrowMode.value = event.matches
+/** 配置面板启动分析完成：切回审查发现并刷新结果 */
+function onAnalysisStarted() {
+  activeAnalysisTab.value = 'findings'
+  void loadResults()
 }
 
 async function loadResults() {
   loading.value = true
   loadError.value = ''
   try {
+    await review.loadBatchFiles()
     await review.refreshJob()
     await review.loadFindings()
   } catch (err) {
@@ -121,13 +114,13 @@ function selectRisk(id: string) {
   if (risk?.evidence) locateCitation(risk.evidence)
 }
 
-/** 「定位证据」按钮：总是选中并跳到证据位置 */
+/** 「定位证据」：总是选中并跳到证据位置 */
 function locateRisk(risk: ReviewRisk) {
   activeAnalysisTab.value = 'findings'
   selectRisk(risk.id)
 }
 
-function locateCitation(anchor: Record<string, unknown>) {
+function locateCitation(anchor: ReviewCitation | Record<string, unknown>) {
   activeAnalysisTab.value = 'findings'
   window.dispatchEvent(new CustomEvent('review:locate-evidence', { detail: anchor }))
 }
@@ -156,12 +149,7 @@ function evidencePage(anchor: Record<string, unknown>) {
   return Number.isFinite(page) && page > 0 ? Math.round(page) : 1
 }
 
-function evidencePrecisionLabel(anchor: Record<string, unknown>) {
-  return anchor.precision === 'page' ? '页级定位' : '精确定位'
-}
-
-async function decideRisk(decision: 'accepted' | 'dismissed') {
-  const risk = selectedRisk.value
+async function decideRisk(risk: ReviewRisk, decision: 'accepted' | 'dismissed') {
   if (!risk || decidingFindingId.value) return
   decidingFindingId.value = risk.id
   decideError.value = ''
@@ -196,11 +184,6 @@ async function exportReport() {
   }
 }
 
-async function goPrevious() {
-  review.previousStep()
-  await router.push({ name: 'review-rules' })
-}
-
 function goToUpload() {
   review.goToStep(1)
   void router.push({ name: 'review-upload' })
@@ -209,8 +192,6 @@ function goToUpload() {
 
 <template>
   <div class="console-page">
-    <ReviewStepper :current="review.currentStep" />
-
     <div class="console-header">
       <div>
         <h1>AI 审查分析</h1>
@@ -218,16 +199,26 @@ function goToUpload() {
       </div>
     </div>
 
-    <div v-if="!hasJob" class="console-empty">
-      <h2>尚未开始审查</h2>
-      <p>请先返回第一步上传待审文档并启动分析，审查结果将在此处展示。</p>
-      <el-button data-test="back-to-upload" type="primary" @click="goToUpload">返回文档上传</el-button>
-    </div>
+    <div class="console-layout">
+        <!-- 左：PDF 文档预览（缩略图栏 + 可缩放画布 + 证据高亮） -->
+        <main class="reader-panel" aria-label="PDF 文档预览">
+          <div v-if="!pdfDocId" class="reader-placeholder" data-test="reader-placeholder">
+            <p>尚未加载待审文档</p>
+            <span>上传文档并启动分析后，这里将展示 PDF 预览与证据高亮。</span>
+          </div>
+          <ReviewPdfPreview
+            v-else
+            :doc-id="pdfDocId"
+            :filename="documentLabel"
+            :highlight-rects="highlightRects"
+            :risk-pages="findingRiskPages"
+            :active-page="activePage"
+            :scale="100"
+          />
+        </main>
 
-    <template v-else>
-      <div class="console-layout" :class="{ 'console-layout--narrow': narrowMode }">
-        <!-- 左：审查发现列表 -->
-        <aside class="findings-panel" aria-label="审查发现列表">
+        <!-- 右：审查结果（风险卡内联修改建议） + 问答助手 -->
+        <aside class="findings-panel" aria-label="审查结果">
           <div class="findings-heading">
             <h2>审查结果</h2>
           </div>
@@ -252,20 +243,38 @@ function goToUpload() {
               :class="{ 'analysis-tab--active': activeAnalysisTab === 'assistant' }"
               @click="activeAnalysisTab = 'assistant'"
             >问答助手</button>
+            <button
+              id="config-tab"
+              type="button"
+              role="tab"
+              data-test="config-tab"
+              :aria-selected="activeAnalysisTab === 'config'"
+              aria-controls="config-panel-content"
+              :class="{ 'analysis-tab--active': activeAnalysisTab === 'config' }"
+              @click="activeAnalysisTab = 'config'"
+            >审查配置</button>
           </div>
 
           <div
             v-if="activeAnalysisTab === 'findings'"
             id="findings-panel-content"
-            class="findings-content"
+            class="findings-content panel-content"
             role="tabpanel"
             aria-labelledby="findings-tab"
           >
-            <div class="metrics-grid">
+            <div v-if="!hasJob" class="findings-empty findings-empty--guide">
+              <p>尚未开始审查。</p>
+              <p>请先在「审查配置」中选择范本、启用条款规则并启动全量分析；如未上传文档，请先前往上传。</p>
+              <div class="findings-empty__actions">
+                <el-button type="primary" @click="activeAnalysisTab = 'config'">前往审查配置</el-button>
+                <el-button plain @click="goToUpload">文档上传</el-button>
+              </div>
+            </div>
+            <div v-else class="metrics-grid">
               <div><span>发现问题</span><strong>{{ findingCount }}</strong></div>
               <div><span>风险评分</span><strong class="risk-score">{{ overallRisk }}</strong></div>
             </div>
-            <div class="findings-section">
+            <div v-if="hasJob" class="findings-section">
               <div class="findings-section__title"><h3>审查发现</h3><span>{{ findingCount }} 项</span></div>
               <div class="risk-list">
                 <div
@@ -279,25 +288,18 @@ function goToUpload() {
                     :action="risk.action ?? 'pending'"
                     :selected="review.activeFindingId === risk.id"
                     @select="toggleRisk"
+                    @locate="locateRisk"
+                    @decide="(decision) => decideRisk(risk, decision)"
                   />
-                  <button
-                    type="button"
-                    class="risk-locate"
-                    data-test="locate-evidence"
-                    :aria-label="`定位证据：${risk.title}`"
-                    @click="locateRisk(risk)"
-                  >
-                    <el-icon aria-hidden="true"><View /></el-icon>
-                    定位证据
-                  </button>
                 </div>
               </div>
               <div v-if="loadError" class="findings-empty findings-empty--error" role="alert">{{ loadError }}</div>
               <div v-else-if="loading && !review.risks.length" class="findings-empty">正在加载审查结果…</div>
               <div v-else-if="!review.risks.length" class="findings-empty">暂无审查发现</div>
             </div>
-            <p v-if="exportError" class="console-error" role="alert">{{ exportError }}</p>
-            <div class="console-actions">
+            <p v-if="hasJob && exportError" class="console-error" role="alert">{{ exportError }}</p>
+            <p v-if="hasJob && decideError" class="console-error" role="alert">{{ decideError }}</p>
+            <div v-if="hasJob" class="console-actions">
               <el-button type="danger" plain :disabled="review.analysisStatus !== 'complete' && review.analysisStatus !== 'complete_degraded'" @click="rejectChanges">拒绝更改</el-button>
               <el-button
                 data-test="approve-draft"
@@ -311,111 +313,18 @@ function goToUpload() {
               </el-button>
             </div>
           </div>
-          <div v-else id="assistant-panel-content" role="tabpanel" aria-labelledby="assistant-tab">
-            <ReviewAssistant :risk="selectedRisk ?? undefined" @locate="locateCitation" />
-          </div>
-        </aside>
-
-        <!-- 窄屏切换：预览 / 详情 -->
-        <div v-if="narrowMode" class="narrow-switch" role="tablist" aria-label="预览与详情切换">
-          <button
-            type="button"
-            role="tab"
-            data-test="narrow-preview-tab"
-            :aria-selected="narrowPane === 'preview'"
-            :class="{ 'narrow-switch__active': narrowPane === 'preview' }"
-            @click="narrowPane = 'preview'"
-          >PDF 预览</button>
-          <button
-            type="button"
-            role="tab"
-            data-test="narrow-detail-tab"
-            :aria-selected="narrowPane === 'detail'"
-            :class="{ 'narrow-switch__active': narrowPane === 'detail' }"
-            @click="narrowPane = 'detail'"
-          >问题详情</button>
-        </div>
-
-        <!-- 中：PDF 预览 + 证据高亮 -->
-        <main class="reader-panel" :class="{ 'pane-hidden': narrowMode && narrowPane !== 'preview' }">
-          <ReviewPdfPreview
-            :doc-id="pdfDocId"
-            :highlight-rects="highlightRects"
-            :active-page="activePage"
-            :scale="100"
-          />
-        </main>
-
-        <!-- 右：问题详情 -->
-        <aside class="detail-panel" :class="{ 'pane-hidden': narrowMode && narrowPane !== 'detail' }" aria-label="问题详情">
-          <template v-if="selectedRisk">
-            <header class="detail-header">
-              <el-tag :type="severityMeta.type" size="small" effect="dark">{{ severityMeta.label }}</el-tag>
-              <h2 data-test="detail-title">{{ selectedRisk.title }}</h2>
-              <p class="detail-section">{{ selectedRisk.section }}</p>
-            </header>
-
-            <div class="detail-body">
-              <div class="detail-block" data-test="detail-quote">
-                <h3>原文引用</h3>
-                <blockquote>{{ selectedRisk.quote || selectedRisk.currentText || '（未提供原文引用）' }}</blockquote>
-              </div>
-              <div class="detail-block" data-test="detail-reason">
-                <h3>风险原因</h3>
-                <p>{{ selectedRisk.description }}</p>
-              </div>
-              <div class="detail-block" data-test="detail-suggestion">
-                <h3>修改建议</h3>
-                <p>{{ selectedRisk.suggestion || '（暂无修改建议）' }}</p>
-              </div>
-              <div v-if="selectedRisk.evidence" class="detail-block detail-block--evidence" data-test="detail-evidence">
-                <h3>证据定位</h3>
-                <p>第 {{ evidencePage(selectedRisk.evidence) }} 页 · {{ evidencePrecisionLabel(selectedRisk.evidence) }}</p>
-                <el-button size="small" type="primary" plain data-test="detail-locate" @click="locateRisk(selectedRisk)">
-                  <el-icon aria-hidden="true"><View /></el-icon>
-                  定位证据
-                </el-button>
-              </div>
+          <div v-else-if="activeAnalysisTab === 'assistant'" id="assistant-panel-content" class="panel-content" role="tabpanel" aria-labelledby="assistant-tab">
+            <div v-if="!hasJob" class="findings-empty findings-empty--guide">
+              <p>分析完成后，可围绕当前任务与所选风险进行文档问答。</p>
+              <el-button type="primary" @click="activeAnalysisTab = 'config'">前往审查配置</el-button>
             </div>
-
-            <p v-if="decideError" class="detail-error" role="alert">{{ decideError }}</p>
-
-            <footer class="detail-actions">
-              <el-button
-                data-test="decide-accept"
-                :type="selectedRisk.action === 'accepted' ? 'success' : 'primary'"
-                :plain="selectedRisk.action !== 'accepted'"
-                :loading="decidingFindingId === selectedRisk.id"
-                @click="decideRisk('accepted')"
-              >
-                <el-icon aria-hidden="true"><Check /></el-icon>
-                {{ selectedRisk.action === 'accepted' ? '已采纳建议' : '采纳建议' }}
-              </el-button>
-              <el-button
-                data-test="decide-dismiss"
-                :type="selectedRisk.action === 'dismissed' ? 'info' : 'default'"
-                :loading="decidingFindingId === selectedRisk.id"
-                @click="decideRisk('dismissed')"
-              >
-                <el-icon aria-hidden="true"><Close /></el-icon>
-                {{ selectedRisk.action === 'dismissed' ? '已忽略风险' : '忽略风险' }}
-              </el-button>
-            </footer>
-          </template>
-
-          <div v-else class="detail-empty" data-test="detail-empty">
-            <el-icon aria-hidden="true"><View /></el-icon>
-            <p>点击左侧发现查看详情，或使用「定位证据」跳到原文对应位置。</p>
+            <ReviewAssistant v-else :risk="selectedRisk ?? undefined" @locate="locateCitation" />
+          </div>
+          <div v-else id="config-panel-content" class="panel-content" role="tabpanel" aria-labelledby="config-tab">
+            <ReviewConfigPanel @started="onAnalysisStarted" />
           </div>
         </aside>
       </div>
-
-      <ReviewFooter previous-label="返回规则设置" next-label="分析完成" :next-disabled="true" @previous="goPrevious">
-        <span v-if="review.analysisStatus === 'failed'">{{ review.error || '分析失败，请返回重试。' }}</span>
-        <span v-else-if="analysisInProgress">审查分析进行中，请稍候…</span>
-        <span v-else>分析完成，共发现 {{ findingCount }} 项风险。</span>
-      </ReviewFooter>
-    </template>
   </div>
 </template>
 
@@ -444,37 +353,56 @@ function goToUpload() {
   font-size: 12px;
 }
 
-.console-empty {
+.reader-placeholder {
   display: grid;
-  min-height: 420px;
+  min-height: 0;
+  flex: 1;
   place-items: center;
   align-content: center;
-  gap: 12px;
-  padding: 48px 24px;
-  border: 1px solid var(--outline-soft);
-  border-radius: var(--radius-md);
-  background: var(--surface);
+  gap: 6px;
+  color: var(--ink-muted);
   text-align: center;
 }
 
-.console-empty h2 {
+.reader-placeholder p {
   margin: 0;
-  font-size: 24px;
+  font-size: 16px;
+  font-weight: 600;
 }
 
-.console-empty p {
-  max-width: 460px;
-  margin: 0 0 12px;
-  color: var(--ink-muted);
-  font-size: 14px;
+.reader-placeholder span {
+  max-width: 320px;
+  font-size: 12px;
   line-height: 1.7;
 }
 
-/* 三栏布局：发现列表 | PDF 预览 | 问题详情 */
+.findings-empty--guide {
+  display: grid;
+  gap: 10px;
+  margin: 16px 20px;
+  padding: 20px;
+  text-align: left;
+}
+
+.findings-empty--guide p {
+  margin: 0;
+  line-height: 1.7;
+}
+
+.findings-empty__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+/* 两栏布局：PDF 文档预览 | 审查结果（仿法智） */
 .console-layout {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr) 320px;
-  min-height: 680px;
+  grid-template-columns: minmax(0, 1fr) 460px;
+  height: calc(100vh - 280px);
+  max-height: 900px;
+  min-height: 480px;
   border: 1px solid var(--outline-soft);
   background: var(--surface);
 }
@@ -484,7 +412,7 @@ function goToUpload() {
   min-width: 0;
   min-height: 0;
   flex-direction: column;
-  border-right: 1px solid var(--outline-soft);
+  border-left: 1px solid var(--outline-soft);
   background: var(--surface);
 }
 
@@ -497,27 +425,9 @@ function goToUpload() {
   background: #eef2f8;
 }
 
-.detail-panel {
-  display: flex;
-  min-width: 0;
-  min-height: 0;
-  flex-direction: column;
-  overflow-y: auto;
-  border-left: 1px solid var(--outline-soft);
-  background: var(--surface);
-}
-
-.narrow-switch {
-  display: none;
-}
-
-.pane-hidden {
-  display: none;
-}
-
 .analysis-tabs {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   padding: 0 20px;
   border-bottom: 1px solid var(--outline-soft);
 }
@@ -551,6 +461,15 @@ function goToUpload() {
   overflow-y: auto;
 }
 
+.panel-content {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
 .findings-heading {
   display: flex;
   align-items: flex-start;
@@ -578,7 +497,7 @@ function goToUpload() {
   gap: 7px;
   padding: 13px;
   border: 1px solid var(--outline-soft);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: var(--surface-low);
 }
 
@@ -588,7 +507,7 @@ function goToUpload() {
 }
 
 .metrics-grid strong {
-  font-size: 24px;
+  font-size: 22px;
 }
 
 .metrics-grid .risk-score {
@@ -596,27 +515,28 @@ function goToUpload() {
 }
 
 .findings-section {
-  display: grid;
+  display: flex;
   min-height: 0;
-  gap: 12px;
-  padding: 20px;
+  flex: 1;
+  flex-direction: column;
+  padding: 16px 20px;
 }
 
 .findings-section__title {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  margin-bottom: 12px;
 }
 
 .findings-section__title h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .findings-section__title span {
   color: var(--ink-muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .risk-list {
@@ -630,223 +550,73 @@ function goToUpload() {
   gap: 6px;
 }
 
-.risk-locate {
-  display: inline-flex;
-  align-items: center;
-  align-self: flex-end;
-  gap: 5px;
-  min-height: 26px;
-  padding: 3px 10px;
-  border: 1px solid var(--outline-soft);
-  border-radius: var(--radius-sm);
-  color: var(--action);
-  background: var(--surface);
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.risk-locate:hover {
-  border-color: var(--action);
-  background: var(--action-soft);
-}
-
-.risk-item--active .risk-locate {
-  border-color: var(--action-outline);
-}
-
 .findings-empty {
   padding: 20px 12px;
-  border: 1px dashed var(--outline);
-  border-radius: var(--radius-sm);
+  border: 1px dashed var(--outline-soft);
+  border-radius: var(--radius-md);
   color: var(--ink-muted);
-  background: var(--surface-low);
-  font-size: 12px;
   text-align: center;
 }
 
 .findings-empty--error {
   border-color: var(--danger-outline);
   color: var(--danger);
-  background: var(--danger-soft);
 }
 
 .console-error {
-  margin: 0 20px 12px;
+  margin: 10px 20px 0;
   color: var(--danger);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .console-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
-  margin-top: auto;
-  padding: 16px 20px 20px;
+  padding: 16px 20px;
   border-top: 1px solid var(--outline-soft);
-}
-
-.console-actions .el-button {
-  width: 100%;
-  margin: 0;
-}
-
-.console-actions .el-button:last-child {
-  grid-column: 1 / -1;
-}
-
-/* 问题详情 */
-.detail-header {
-  padding: 20px;
-  border-bottom: 1px solid var(--outline-soft);
-  background: var(--surface-low);
-}
-
-.detail-header h2 {
-  margin: 12px 0 6px;
-  font-size: 17px;
-  line-height: 1.45;
-}
-
-.detail-section {
-  margin: 0;
-  color: var(--ink-muted);
-  font-size: 11px;
-}
-
-.detail-body {
-  display: grid;
-  gap: 16px;
-  padding: 20px;
-}
-
-.detail-block h3 {
-  margin: 0 0 8px;
-  color: var(--ink-muted);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-
-.detail-block p {
-  margin: 0;
-  color: var(--ink);
-  font-size: 12px;
-  line-height: 1.7;
-}
-
-.detail-block blockquote {
-  margin: 0;
-  padding: 10px 12px;
-  border-left: 3px solid var(--action);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  color: var(--ink);
-  background: var(--surface-low);
-  font-size: 12px;
-  line-height: 1.7;
-}
-
-.detail-block--evidence {
-  padding: 12px;
-  border: 1px solid var(--action-outline);
-  border-radius: var(--radius-sm);
-  background: var(--action-subtle);
-}
-
-.detail-block--evidence .el-button {
-  margin-top: 8px;
-}
-
-.detail-error {
-  margin: 0 20px 12px;
-  color: var(--danger);
-  font-size: 11px;
-}
-
-.detail-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: auto;
-  padding: 16px 20px 20px;
-  border-top: 1px solid var(--outline-soft);
-}
-
-.detail-actions .el-button {
-  width: 100%;
-  margin: 0;
-}
-
-.detail-empty {
-  display: grid;
-  min-height: 360px;
-  place-items: center;
-  align-content: center;
-  gap: 10px;
-  padding: 24px;
-  color: var(--ink-muted);
-  text-align: center;
-}
-
-.detail-empty .el-icon {
-  font-size: 30px;
-  color: var(--outline);
-}
-
-.detail-empty p {
-  max-width: 220px;
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.7;
+  background: var(--surface);
 }
 
 @media (max-width: 1199px) {
   .console-layout {
     grid-template-columns: 1fr;
+    height: auto;
+    max-height: none;
+    min-height: 560px;
   }
 
   .findings-panel {
-    border-right: 0;
-    border-bottom: 1px solid var(--outline-soft);
-  }
-
-  .reader-panel,
-  .detail-panel {
-    min-height: 480px;
     border-left: 0;
+    border-top: 1px solid var(--outline-soft);
+    min-height: 560px;
   }
 
-  .console-layout--narrow .narrow-switch {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    border-bottom: 1px solid var(--outline-soft);
+  .reader-panel {
+    min-height: 560px;
   }
 
-  .narrow-switch button {
-    min-height: 44px;
-    border: 0;
-    border-bottom: 2px solid transparent;
-    color: var(--ink-muted);
-    background: var(--surface);
-    font-size: 13px;
-    font-weight: 700;
-    cursor: pointer;
+  .console-header h1 {
+    font-size: 26px;
   }
 
-  .narrow-switch .narrow-switch__active {
-    border-bottom-color: var(--action);
-    color: var(--action);
+  .console-header {
+    flex-direction: column;
+    gap: 12px;
   }
 }
 
 @media (max-width: 680px) {
-  .console-header h1 {
-    font-size: 28px;
+  .analysis-tabs {
+    padding: 0 12px;
   }
 
-  .console-header {
-    align-items: stretch;
-    flex-direction: column;
+  .findings-heading,
+  .metrics-grid,
+  .findings-section,
+  .console-actions {
+    padding-left: 12px;
+    padding-right: 12px;
   }
 }
 </style>

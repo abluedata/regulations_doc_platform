@@ -35,12 +35,13 @@ from services.review.hitl import HitlDecisionMachine
 from services.review.job_runner import PersistentReviewQueue
 from services.review.report import create_markdown_artifact
 from services.review.store import ReviewStore, page, stable_hash, utc_now
+from services.review.suggestions import generate_suggestions
 
 
 router = APIRouter(prefix="/review", tags=["review"])
 
 _store = ReviewStore(Path(DATA_ROOT) / "reviews")
-_queue = PersistentReviewQueue(_store)
+_queue = PersistentReviewQueue(_store, suggestion_generator=generate_suggestions)
 _assistant = ReviewAssistant(_store)
 _hitl = HitlDecisionMachine(_store)
 
@@ -70,6 +71,14 @@ def list_rules(
     q: str | None = None,
 ):
     items, _ = _store.list("rules", page=1, page_size=1000)
+    # 每逻辑规则只返回最新版本（历史版本供已启动/已完成任务快照使用）
+    latest_by_rule: dict[str, dict[str, Any]] = {}
+    for item in items:
+        key = str(item.get("rule_id") or item["id"])
+        current = latest_by_rule.get(key)
+        if current is None or int(item.get("version", 1)) > int(current.get("version", 1)):
+            latest_by_rule[key] = item
+    items = sorted(latest_by_rule.values(), key=lambda item: str(item.get("created_at") or ""))
     if category:
         items = [item for item in items if item.get("category") == category]
     if q:
@@ -78,9 +87,31 @@ def list_rules(
     return page(items, page_number=page_number, page_size=page_size)
 
 
+@router.put("/rules/{rule_version_id}", status_code=200)
+def update_rule(rule_version_id: str, body: CreateRuleRequest):
+    """修改规则产生新版本（FR-018）：旧版本保持不可变，新版本发布。"""
+    _require("rules", rule_version_id)
+    updated = _store.create_rule_version(rule_version_id, body.model_dump(exclude_none=True))
+    _store.append_audit(
+        "rule.version_created",
+        "rule",
+        updated["id"],
+        {"rule_id": updated.get("rule_id"), "version": updated.get("version"), "based_on": rule_version_id},
+    )
+    return updated
+
+
 @router.get("/rule-versions/{rule_version_id}")
 def get_rule(rule_version_id: str):
     return _require("rules", rule_version_id)
+
+
+@router.delete("/rules/{rule_version_id}", status_code=204)
+def delete_rule(rule_version_id: str):
+    rule = _require("rules", rule_version_id)
+    _store.delete_record("rules", rule_version_id)
+    _store.append_audit("rule.deleted", "rule", rule_version_id, {"rule_id": rule.get("rule_id"), "name": rule.get("name")})
+    return Response(status_code=204)
 
 
 @router.post("/templates", status_code=201)
@@ -187,8 +218,29 @@ def start_analysis(body: StartAnalysisRequest, idempotency_key: str | None = Hea
 
     batch = _require("batches", body.batch_id)
     docs = [_store.batch_document(body.batch_id, membership_id) for membership_id in body.document_membership_ids]
-    rules = [_engine_rule(_require("rules", selection.rule_version_id), selection.overrides) for selection in body.rule_selections if selection.enabled]
-    snapshot = _snapshot(body, docs, rules)
+    configuration: dict[str, Any] | None = None
+    if body.configuration_id:
+        # 优先根据已有配置进行审查：配置内的规则选择、灵敏度、分析方案与标记模式为准
+        configuration = _require("configurations", body.configuration_id)
+        selections = list(configuration.get("rule_selections") or [])
+        invalid_ids = [
+            str(selection.get("rule_version_id"))
+            for selection in selections
+            if selection.get("rule_version_id") and _store.get("rules", str(selection.get("rule_version_id"))) is None
+        ]
+        if invalid_ids:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "invalid_configuration_rules", "rule_version_ids": invalid_ids},
+            )
+        rules = [
+            _engine_rule(_require("rules", str(selection.get("rule_version_id"))), selection.get("overrides"))
+            for selection in selections
+            if selection.get("enabled", True)
+        ]
+    else:
+        rules = [_engine_rule(_require("rules", selection.rule_version_id), selection.overrides) for selection in body.rule_selections if selection.enabled]
+    snapshot = _snapshot(body, docs, rules, configuration=configuration)
     job = _store.create_analysis_job(
         {
             "batch_id": body.batch_id,
@@ -354,8 +406,11 @@ def create_conversation(body: CreateConversationRequest):
     )
     if not in_job_scope:
         raise HTTPException(status_code=409, detail="document_scope_mismatch")
-    if membership.get("status") != "ready":
+    if not _document_ready(membership):
         raise HTTPException(status_code=409, detail="document_not_ready")
+    if membership.get("status") != "ready":
+        # 自愈：成员状态滞后于文档管线事实（前端在解析完成前入批且无人回写）
+        _store.set_batch_document_status(str(job["batch_id"]), body.document_membership_id, "ready")
     return _store.create_conversation(body.analysis_job_id, membership)
 
 
@@ -440,6 +495,14 @@ def _engine_rule(rule: Mapping[str, Any], overrides: Mapping[str, Any] | None = 
     }
 
 
+def _document_ready(membership: Mapping[str, Any]) -> bool:
+    """成员就绪判定：批成员状态以文档管线事实为准，避免成员状态滞后导致误拒绝。"""
+    if membership.get("status") == "ready":
+        return True
+    meta = document_store.load_meta(membership.get("document_id") or "")
+    return bool(meta and meta.get("status") == "ready")
+
+
 def _document_ir(membership: Mapping[str, Any]) -> dict[str, Any]:
     if isinstance(membership.get("ir"), Mapping):
         return dict(membership["ir"])
@@ -458,7 +521,13 @@ def _document_ir(membership: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _snapshot(body: StartAnalysisRequest, docs: list[Mapping[str, Any]], rules: list[Mapping[str, Any]]) -> dict[str, Any]:
+def _snapshot(
+    body: StartAnalysisRequest,
+    docs: list[Mapping[str, Any]],
+    rules: list[Mapping[str, Any]],
+    *,
+    configuration: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     rule_hash = stable_hash([rule.get("rule_version") for rule in rules])
     template_hash = body.template_version_id or stable_hash([rule.get("template_version") for rule in rules])
     version_tuple = {
@@ -470,7 +539,18 @@ def _snapshot(body: StartAnalysisRequest, docs: list[Mapping[str, Any]], rules: 
         "eval_set_hash": "",
         "seed": 20260815,
     }
-    return {
+    effective_sensitivity = int(configuration.get("sensitivity", body.sensitivity)) if configuration else body.sensitivity
+    effective_profile = (configuration or {}).get("analysis_profile_id") or body.analysis_profile_id
+    effective_marking = (configuration or {}).get("marking_mode") or body.marking_mode
+    if configuration is None:
+        rule_version_ids = [selection.rule_version_id for selection in body.rule_selections if selection.enabled]
+    else:
+        rule_version_ids = [
+            str(selection.get("rule_version_id"))
+            for selection in configuration.get("rule_selections", [])
+            if selection.get("enabled", True)
+        ]
+    snapshot: dict[str, Any] = {
         "id": stable_hash({"body": body.model_dump(), "docs": docs})[:32],
         "batch_id": body.batch_id,
         "document_versions": [
@@ -478,13 +558,20 @@ def _snapshot(body: StartAnalysisRequest, docs: list[Mapping[str, Any]], rules: 
             for doc in docs
         ],
         "template_version_id": body.template_version_id,
-        "rule_version_ids": [selection.rule_version_id for selection in body.rule_selections if selection.enabled],
-        "sensitivity": body.sensitivity,
-        "analysis_profile_id": body.analysis_profile_id,
-        "marking_mode": body.marking_mode,
+        "rule_version_ids": rule_version_ids,
+        "sensitivity": effective_sensitivity,
+        "analysis_profile_id": effective_profile,
+        "marking_mode": effective_marking,
         "input_hash": stable_hash(body.model_dump()),
         "version_tuple": version_tuple,
     }
+    if configuration:
+        snapshot["configuration"] = {
+            "id": configuration.get("id"),
+            "name": configuration.get("name"),
+            "revision": configuration.get("revision", 0),
+        }
+    return snapshot
 
 
 def _job_response(job: Mapping[str, Any]) -> dict[str, Any]:

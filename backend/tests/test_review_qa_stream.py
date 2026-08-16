@@ -30,7 +30,7 @@ def conversation(tmp_path):
 def test_stream_has_exactly_one_terminal_event(conversation, failure):
     store, convo = conversation
 
-    def answerer(question, scope, filename):
+    def answerer(question, scope, filename, **_kwargs):
         if failure:
             raise failure
         return GroundedAnswer(answer="付款期限为三十日。", citations=[{
@@ -48,7 +48,7 @@ def test_stream_has_exactly_one_terminal_event(conversation, failure):
 
 def test_refusal_uses_done_and_has_no_citations(conversation):
     store, convo = conversation
-    assistant = ReviewAssistant(store, answerer=lambda *_args: GroundedAnswer.refusal("no_evidence"))
+    assistant = ReviewAssistant(store, answerer=lambda *_args, **_kwargs: GroundedAnswer.refusal("no_evidence"))
     events = parse_events(assistant.stream_answer(convo["id"], {"request_id": "r2", "message": "外部收入？"}))
     done = events[-1]
     assert done[0] == "done"
@@ -56,11 +56,42 @@ def test_refusal_uses_done_and_has_no_citations(conversation):
     assert done[1]["citations"] == []
 
 
+def test_stream_forwards_history_and_finding_context(conversation):
+    """多轮历史与选中发现必须传给回答器：问答助手的企业级上下文要求。"""
+    store, convo = conversation
+    store.save_finding({
+        "id": "finding-1",
+        "finding_id": "finding-1",
+        "analysis_job_id": "job-1",
+        "title": "投标保证金条款",
+        "rule_id": "rule-1",
+        "quote": "投标保证金",
+        "explanation": "保证金缴纳要求",
+    })
+    received = {}
+
+    def answerer(_question, _scope, _filename, **kwargs):
+        received.update(kwargs)
+        return GroundedAnswer.refusal("no_evidence")
+
+    assistant = ReviewAssistant(store, answerer=answerer)
+    events = parse_events(assistant.stream_answer(convo["id"], {
+        "request_id": "r3",
+        "message": "这条风险为什么成立？",
+        "finding_id": "finding-1",
+        "history": [{"role": "user", "content": "有哪些风险？"}, {"role": "assistant", "content": "共2项。"}],
+    }))
+    assert events[-1][0] == "done"
+    assert [item["content"] for item in received["history"]] == ["有哪些风险？", "共2项。"]
+    assert received["finding"]["title"] == "投标保证金条款"
+    assert received["finding"]["quote"] == "投标保证金"
+
+
 def test_completed_request_is_idempotently_replayed(conversation):
     store, convo = conversation
     calls = 0
 
-    def answerer(*_args):
+    def answerer(*_args, **_kwargs):
         nonlocal calls
         calls += 1
         return GroundedAnswer.refusal("no_evidence")

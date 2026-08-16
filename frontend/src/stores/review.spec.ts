@@ -6,6 +6,7 @@ vi.mock('@/api/review', () => ({
   listRules: vi.fn(),
   listTemplates: vi.fn(),
   createRule: vi.fn(),
+  updateRule: vi.fn(),
   createTemplate: vi.fn(),
   createBatch: vi.fn(),
   addBatchDocument: vi.fn(),
@@ -13,10 +14,14 @@ vi.mock('@/api/review', () => ({
   startAnalysis: vi.fn(),
   getAnalysisJob: vi.fn(),
   listFindings: vi.fn(),
-  streamAnalysis: vi.fn(),
+  streamAnalysis: vi.fn(() => Promise.resolve()),
   decideFinding: vi.fn(),
   decideOverall: vi.fn(),
   createExport: vi.fn(),
+  listConfigurations: vi.fn(),
+  createConfiguration: vi.fn(),
+  listBatches: vi.fn(),
+  getBatch: vi.fn(),
 }))
 
 vi.mock('@/api/docs', () => ({
@@ -121,6 +126,52 @@ describe('review store', () => {
 
     expect(reviewApi.createRule).toHaveBeenCalledWith(expect.objectContaining({ name: '履约保函' }))
     expect(store.clauses.map((c) => c.title)).toContain('履约保函')
+  })
+
+  it('sends latest rule selections without configuration id after user toggles', async () => {
+    const rules = [
+      { id: 'r1', rule_id: 'r1', name: '规则A', category: '财务', severity: 'medium', definition: { description: '描述A' }, status: 'published', version: 1 },
+      { id: 'r2', rule_id: 'r2', name: '规则B', category: '合规', severity: 'high', definition: { description: '描述B' }, status: 'published', version: 1 },
+    ]
+    vi.mocked(reviewApi.listRules).mockResolvedValue({ data: { items: rules }, total: 2, page: 1, page_size: 50 } as never)
+    vi.mocked(reviewApi.listTemplates).mockResolvedValue({ data: { items: [] }, total: 0, page: 1, page_size: 50 } as never)
+    vi.mocked(reviewApi.listConfigurations).mockResolvedValue({
+      data: {
+        items: [{
+          id: 'cfg-1', name: '默认配置',
+          rule_selections: [
+            { rule_version_id: 'r1', enabled: true, overrides: {} },
+            { rule_version_id: 'r2', enabled: true, overrides: {} },
+          ],
+          sensitivity: 80, analysis_profile_id: 'accurate', marking_mode: 'standard', revision: 0,
+        }],
+        total: 1, page: 1, page_size: 50,
+      },
+    } as never)
+    vi.mocked(reviewApi.startAnalysis).mockResolvedValue({
+      data: {
+        id: 'job-1', status: 'complete', progress: 100, revision: 0, result_revision: 0, decision_revision: 0,
+        snapshot: {}, documents: [],
+      },
+    } as never)
+    vi.mocked(reviewApi.listFindings).mockResolvedValue({ data: { items: [] } } as never)
+
+    const store = useReviewStore()
+    await store.initialize()
+    store.batchId = 'b1'
+    store.files = [{ id: 'm1', name: 'a.pdf', size: '1 KB', progress: 100, status: 'ready', documentId: 'd1', documentVersionId: 'v1' }]
+
+    // 未修改：复用已保存配置
+    await store.startAnalysis()
+    expect(vi.mocked(reviewApi.startAnalysis).mock.calls[0]?.[0].configuration_id).toBe('cfg-1')
+
+    // 用户停用规则B：以最新选择为准，不再携带配置 ID
+    store.toggleClause('r2')
+    expect(store.configurationDirty).toBe(true)
+    await store.startAnalysis()
+    const latest = vi.mocked(reviewApi.startAnalysis).mock.calls.at(-1)?.[0]
+    expect(latest?.configuration_id).toBeNull()
+    expect(latest?.rule_selections).toEqual([{ rule_version_id: 'r1', enabled: true, overrides: {} }])
   })
 
   it('creates a template through the backend and reloads the list', async () => {

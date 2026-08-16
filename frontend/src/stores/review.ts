@@ -44,6 +44,15 @@ export const useReviewStore = defineStore('review', () => {
   const sensitivity = ref(85)
   const markingMode = ref<'standard' | 'high_only'>('standard')
   const analysisProfile = ref<'accurate' | 'fast'>('accurate')
+  const configurationId = ref<string | null>(null)
+  const configurationRevision = ref(0)
+  /** 已加载配置的快照：用于判断用户是否在配置基础上做了新修改 */
+  const loadedConfigSnapshot = ref<{
+    ruleIds: string[]
+    sensitivity: number
+    profile: 'accurate' | 'fast'
+    marking: 'standard' | 'high_only'
+  } | null>(null)
   const analysisStatus = ref<ReviewAnalysisStatus>('idle')
   const analysisJobId = ref<string | null>(null)
   const analysisRevision = ref(0)
@@ -78,11 +87,79 @@ export const useReviewStore = defineStore('review', () => {
     error.value = ''
     try {
       await Promise.all([loadTemplates(), loadRules()])
+      // 任意审查页进入都尝试恢复最近批次（24h 内）：离开后重进能继续四步流程
+      await restoreFromServer()
+      await applyLatestConfiguration()
       loadState.value = templates.value.length || clauses.value.length ? 'ready' : 'empty'
     } catch (err) {
       error.value = toMessage(err)
       loadState.value = 'error'
     }
+  }
+
+  /** 优先根据已有配置进行审查：加载最新配置并应用其规则选择、灵敏度、分析方案与标记模式。 */
+  async function applyLatestConfiguration() {
+    try {
+      const { data } = await reviewApi.listConfigurations({ page: 1, page_size: 50 })
+      const latest = [...data.items].sort((a, b) => Date.parse(b.updated_at || '') - Date.parse(a.updated_at || ''))[0]
+      if (!latest) return false
+      configurationId.value = latest.id
+      configurationRevision.value = latest.revision
+      sensitivity.value = latest.sensitivity
+      analysisProfile.value = latest.analysis_profile_id
+      markingMode.value = latest.marking_mode
+      const selected = new Set(
+        latest.rule_selections.filter((selection) => selection.enabled).map((selection) => selection.rule_version_id),
+      )
+      for (const clause of clauses.value) {
+        if (clause.disabled) continue
+        // 仅当配置中明确列出规则时覆盖默认启用状态；失效规则保持默认并标记
+        clause.enabled = selected.size > 0 ? selected.has(clause.id) : true
+      }
+      loadedConfigSnapshot.value = {
+        ruleIds: clauses.value.filter((clause) => clause.enabled && !clause.disabled).map((clause) => clause.id).sort(),
+        sensitivity: sensitivity.value,
+        profile: analysisProfile.value,
+        marking: markingMode.value,
+      }
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /** 当前选择是否与已加载配置不一致：不一致时启动分析必须用最新选择而不是配置快照 */
+  const configurationDirty = computed(() => {
+    const snapshot = loadedConfigSnapshot.value
+    if (!snapshot) return true
+    const currentIds = clauses.value.filter((clause) => clause.enabled && !clause.disabled).map((clause) => clause.id).sort()
+    return (
+      JSON.stringify(currentIds) !== JSON.stringify(snapshot.ruleIds) ||
+      sensitivity.value !== snapshot.sensitivity ||
+      analysisProfile.value !== snapshot.profile ||
+      markingMode.value !== snapshot.marking
+    )
+  })
+  async function saveConfiguration(name = '智能审查默认配置') {
+    const selections = clauses.value
+      .filter((clause) => !clause.disabled)
+      .map((clause) => ({ rule_version_id: clause.id, enabled: clause.enabled, overrides: {} }))
+    const { data } = await reviewApi.createConfiguration({
+      name,
+      rule_selections: selections,
+      sensitivity: sensitivity.value,
+      analysis_profile_id: analysisProfile.value,
+      marking_mode: markingMode.value,
+    })
+    configurationId.value = data.id
+    configurationRevision.value = data.revision
+    loadedConfigSnapshot.value = {
+      ruleIds: selections.map((selection) => selection.rule_version_id).sort(),
+      sensitivity: sensitivity.value,
+      profile: analysisProfile.value,
+      marking: markingMode.value,
+    }
+    return data
   }
 
   async function loadTemplates() {
@@ -108,6 +185,9 @@ export const useReviewStore = defineStore('review', () => {
       enabled: item.status === 'published',
       priority: item.severity === 'high' ? 'high' : undefined,
       threshold: item.llm_fallback ? 'AI 检查' : '确定性检查',
+      category: item.category,
+      severity: item.severity,
+      version: item.version,
     }))
   }
 
@@ -119,6 +199,20 @@ export const useReviewStore = defineStore('review', () => {
     llm_fallback?: boolean
   }) {
     const { data } = await reviewApi.createRule(payload)
+    await loadRules()
+    return data
+  }
+
+  async function updateRule(
+    id: string,
+    payload: {
+      name: string
+      category?: string
+      severity?: 'low' | 'medium' | 'high'
+      definition?: Record<string, unknown>
+    },
+  ) {
+    const { data } = await reviewApi.updateRule(id, payload)
     await loadRules()
     return data
   }
@@ -316,6 +410,8 @@ export const useReviewStore = defineStore('review', () => {
         sensitivity: sensitivity.value,
         analysis_profile_id: analysisProfile.value,
         marking_mode: markingMode.value,
+        // 用户修改过选择/偏好时以当前最新选择为准；未修改则复用已保存配置
+        configuration_id: configurationDirty.value ? null : configurationId.value,
       }, crypto.randomUUID())
       applyJob(data)
       await loadFindings()
@@ -338,9 +434,31 @@ export const useReviewStore = defineStore('review', () => {
     await loadFindings()
   }
 
+  /** deep-link 恢复：控制台直接打开时把批次文档加载到 files，供问答助手选择。 */
+  async function loadBatchFiles() {
+    if (!analysisJobId.value) return
+    const { data: job } = await reviewApi.getAnalysisJob(analysisJobId.value)
+    const batchId = job.snapshot?.batch_id
+    if (!batchId) return
+    const { data: batch } = await reviewApi.getBatch(batchId)
+    for (const member of batch.documents ?? []) {
+      if (files.value.some((file) => file.id === member.id)) continue
+      files.value.push({
+        id: member.id,
+        name: member.filename || member.document_id,
+        size: '',
+        progress: member.status === 'ready' ? 100 : STATUS_PROGRESS.queued,
+        status: member.status === 'ready' ? 'ready' : member.status === 'failed' ? 'failed' : 'queued',
+        documentId: member.document_id,
+        documentVersionId: member.document_version_id,
+      })
+    }
+  }
+
   async function loadFindings() {
     if (!analysisJobId.value) return
-    const { data } = await reviewApi.listFindings(analysisJobId.value)
+    // page_size 上限 200：避免默认 50 条截断大型文档的审查发现
+    const { data } = await reviewApi.listFindings(analysisJobId.value, { page: 1, page_size: 200 })
     risks.value = data.items.map((item) => ({
       id: item.id,
       level: item.severity,
@@ -407,12 +525,14 @@ export const useReviewStore = defineStore('review', () => {
 
   return {
     currentStep, batchId, selectedTemplateId, sensitivity, markingMode, analysisProfile,
+    configurationId, configurationRevision, configurationDirty,
     analysisStatus, analysisJobId, analysisRevision, decisionRevision, files, templates, clauses, risks,
     loadState, error, partialFailure, activeFindingId, readyCount, enabledClauses, restoring,
-    nextStep, previousStep, goToStep, initialize, loadTemplates, loadRules, createRule, createTemplate, ensureBatch,
+    nextStep, previousStep, goToStep, initialize, loadTemplates, loadRules, createRule, updateRule, createTemplate, ensureBatch,
     uploadAndAddFiles, removeFile, selectTemplate, toggleClause, setSensitivity, startAnalysis,
-    refreshJob, loadFindings, subscribeAnalysis, decideRisk, finalizeDraft, exportReport, resetError,
+    refreshJob, loadFindings, loadBatchFiles, subscribeAnalysis, decideRisk, finalizeDraft, exportReport, resetError,
     completeAnalysis, approveDraft, rejectChanges, restoreFromServer, dispose, applyDocStatus,
+    applyLatestConfiguration, saveConfiguration,
   }
 })
 

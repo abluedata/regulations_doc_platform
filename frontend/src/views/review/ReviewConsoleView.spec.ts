@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import ReviewConsoleView from './ReviewConsoleView.vue'
 import ReviewPdfPreview from '@/components/review/ReviewPdfPreview.vue'
+import RiskCard from '@/components/review/RiskCard.vue'
+import ReviewConfigPanel from '@/components/review/ReviewConfigPanel.vue'
 import { useReviewStore } from '@/stores/review'
 import type { ReviewAnalysisStatus } from '@/types'
 
@@ -70,6 +72,7 @@ function setupJobStore(options: { status?: ReviewAnalysisStatus; findings?: Arra
   const store = useReviewStore()
   store.analysisJobId = 'job-1'
   store.analysisStatus = options.status ?? 'complete'
+  store.files = [{ id: 'm1', name: '合同.pdf', size: '1 KB', progress: 100, status: 'ready', documentId: 'doc-1', documentVersionId: 'v1' }]
   vi.mocked(reviewApi.getAnalysisJob).mockResolvedValue({ data: jobPayload(options.status ?? 'complete') } as never)
   vi.mocked(reviewApi.listFindings).mockResolvedValue({
     data: { items: options.findings ?? [], total: (options.findings ?? []).length, page: 1, page_size: 50, result_revision: 0, counts: {} },
@@ -106,7 +109,7 @@ describe('ReviewConsoleView', () => {
     const { wrapper } = await mountConsole()
 
     expect(reviewApi.getAnalysisJob).toHaveBeenCalledWith('job-1')
-    expect(reviewApi.listFindings).toHaveBeenCalledWith('job-1')
+    expect(reviewApi.listFindings).toHaveBeenCalledWith('job-1', { page: 1, page_size: 200 })
     expect(wrapper.get('h1').text()).toBe('AI 审查分析')
     expect(wrapper.find('.risk-card').exists()).toBe(true)
     expect(wrapper.find('.risk-card__title').text()).toBe('责任限制过高')
@@ -157,28 +160,29 @@ describe('ReviewConsoleView', () => {
     expect(wrapper.find('.findings-content').exists()).toBe(false)
   })
 
-  it('renders the three-column layout with PDF preview and detail panels', async () => {
+  it('renders the two-pane layout with PDF preview and inline findings', async () => {
     setupJobStore({ findings: [finding] })
     const { wrapper } = await mountConsole()
 
     expect(wrapper.find('.reader-panel').exists()).toBe(true)
-    expect(wrapper.find('.detail-panel').exists()).toBe(true)
+    expect(wrapper.find('.detail-panel').exists()).toBe(false)
     expect(wrapper.findComponent(ReviewPdfPreview).exists()).toBe(true)
-    expect(wrapper.find('[data-test="detail-empty"]').exists()).toBe(true)
+    // 修改建议内联在审查结果卡片中
+    const card = wrapper.findComponent(RiskCard)
+    expect(card.props('risk').suggestion).toBe('建议改为按合同额的合理比例或设置上限。')
   })
 
-  it('locates evidence when the eye button is clicked: selects the finding, jumps to the page and highlights rects', async () => {
+  it('locates evidence when the card locate button is clicked: selects the finding, jumps to the page and highlights rects', async () => {
     const store = setupJobStore({ findings: [finding] })
     const { wrapper } = await mountConsole()
 
     const events: CustomEvent[] = []
     window.addEventListener('review:locate-evidence', (event) => events.push(event as CustomEvent))
 
-    await wrapper.get('[data-test="locate-evidence"]').trigger('click')
+    await wrapper.get('[data-test="card-locate"]').trigger('click')
     await flushPromises()
 
     expect(store.activeFindingId).toBe('f1')
-    expect(wrapper.get('[data-test="detail-title"]').text()).toBe('责任限制过高')
     expect(events).toHaveLength(1)
     expect(events[0].detail).toEqual(evidenceAnchor)
 
@@ -193,31 +197,27 @@ describe('ReviewConsoleView', () => {
     const store = setupJobStore({ findings: [finding] })
     const { wrapper } = await mountConsole()
 
-    await wrapper.get('[data-test="locate-evidence"]').trigger('click')
+    await wrapper.get('[data-test="card-locate"]').trigger('click')
     await flushPromises()
     expect(store.activeFindingId).toBe('f1')
 
-    await wrapper.get('.risk-card').trigger('click')
+    await wrapper.get('.risk-card__main').trigger('click')
     await flushPromises()
 
     expect(store.activeFindingId).toBeNull()
-    expect(wrapper.find('[data-test="detail-empty"]').exists()).toBe(true)
     const preview = wrapper.findComponent(ReviewPdfPreview)
     expect(preview.props('highlightRects')).toEqual([])
   })
 
-  it('submits accepted / dismissed decisions from the detail panel', async () => {
+  it('submits accepted / dismissed decisions from the risk card', async () => {
     setupJobStore({ findings: [finding] })
     const { wrapper } = await mountConsole()
 
-    await wrapper.get('[data-test="locate-evidence"]').trigger('click')
-    await flushPromises()
-
-    await wrapper.get('[data-test="decide-accept"]').trigger('click')
+    await wrapper.get('[data-test="card-accept"]').trigger('click')
     await flushPromises()
     expect(reviewApi.decideFinding).toHaveBeenCalledWith('f1', { decision_type: 'accepted', comment: '' }, 0)
 
-    await wrapper.get('[data-test="decide-dismiss"]').trigger('click')
+    await wrapper.get('[data-test="card-dismiss"]').trigger('click')
     await flushPromises()
     expect(reviewApi.decideFinding).toHaveBeenCalledWith('f1', { decision_type: 'dismissed', comment: '' }, expect.any(Number))
   })
@@ -242,16 +242,19 @@ describe('ReviewConsoleView', () => {
     expect(reviewApi.getAnalysisJob).toHaveBeenCalledWith('job-9')
   })
 
-  it('guides the user back to upload when no analysis job exists', async () => {
-    const { wrapper, router } = await mountConsole()
+  it('shows the analysis entry when no job exists: config tab is the default and findings guide to it', async () => {
+    const { wrapper } = await mountConsole()
 
-    expect(wrapper.find('.console-empty').exists()).toBe(true)
-    expect(wrapper.find('.reader-panel').exists()).toBe(false)
-
-    await wrapper.get('[data-test="back-to-upload"]').trigger('click')
+    // 布局常驻：PDF 区与审查面板都渲染
+    expect(wrapper.find('.reader-panel').exists()).toBe(true)
+    expect(wrapper.find('.findings-panel').exists()).toBe(true)
+    // 无任务默认打开审查配置（分析入口）
+    expect(wrapper.findComponent(ReviewConfigPanel).exists()).toBe(true)
+    // 审查发现选项卡给出引导
+    await wrapper.get('[data-test="findings-tab"]').trigger('click')
     await flushPromises()
-
-    expect(router.currentRoute.value.name).toBe('review-upload')
+    expect(wrapper.find('.findings-empty--guide').exists()).toBe(true)
+    expect(wrapper.find('.findings-empty--guide').text()).toContain('尚未开始审查')
   })
 
   it('dispatches review:locate-evidence with the evidence anchor when a risk is selected', async () => {
@@ -261,7 +264,7 @@ describe('ReviewConsoleView', () => {
     const events: CustomEvent[] = []
     window.addEventListener('review:locate-evidence', (event) => events.push(event as CustomEvent))
 
-    await wrapper.get('.risk-card').trigger('click')
+    await wrapper.get('.risk-card__main').trigger('click')
 
     expect(events).toHaveLength(1)
     expect(events[0].detail).toEqual(evidenceAnchor)

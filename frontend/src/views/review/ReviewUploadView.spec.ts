@@ -38,12 +38,12 @@ describe('ReviewUploadView', () => {
     vi.mocked(reviewApi.listTemplates).mockResolvedValue({ data: { items: [], total: 0, page: 1, page_size: 50 } } as never)
   })
 
-  it('starts with an empty queue and moves to template selection', async () => {
+  it('starts with an empty queue and moves to the review console', async () => {
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
         { path: '/review/upload', name: 'review-upload', component: ReviewUploadView },
-        { path: '/review/templates', name: 'review-templates', component: { template: '<div />' } },
+        { path: '/review/console', name: 'review-console', component: { template: '<div />' } },
       ],
     })
     await router.push('/review/upload')
@@ -59,8 +59,8 @@ describe('ReviewUploadView', () => {
     await wrapper.get('[data-test="review-next"]').trigger('click')
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    expect(useReviewStore().currentStep).toBe(2)
-    expect(router.currentRoute.value.name).toBe('review-templates')
+    expect(useReviewStore().currentStep).toBe(1)  // 不再有分步推进，直接进入智能审查页
+    expect(router.currentRoute.value.name).toBe('review-console')
   })
 
   it('uploads selected files through the real batch membership flow', async () => {

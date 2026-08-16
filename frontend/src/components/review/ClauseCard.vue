@@ -9,6 +9,7 @@ const props = defineProps<{
 
 defineEmits<{
   toggle: [id: string]
+  edit: [clause: ReviewClause]
 }>()
 
 const clauseIcon = computed(() => {
@@ -58,6 +59,10 @@ const clauseIcon = computed(() => {
       <span v-else class="clause-card__status">
         <span aria-hidden="true"></span>
         正在监控
+      </span>
+      <span class="clause-card__footer-actions">
+        <span v-if="clause.version" class="clause-card__version">v{{ clause.version }}</span>
+        <button class="clause-card__edit" type="button" data-test="clause-edit" :aria-label="`编辑${clause.title}`" @click.stop="$emit('edit', clause)">编辑</button>
       </span>
     </div>
   </article>
@@ -206,5 +211,40 @@ const clauseIcon = computed(() => {
   height: 7px;
   border-radius: 50%;
   background: var(--success);
+}
+
+.clause-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.clause-card__footer-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.clause-card__version {
+  color: var(--ink-muted);
+  font-size: 10px;
+}
+
+.clause-card__edit {
+  min-height: 24px;
+  padding: 2px 10px;
+  border: 1px solid var(--outline-soft);
+  border-radius: var(--radius-sm);
+  color: var(--action);
+  background: var(--surface);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.clause-card__edit:hover {
+  border-color: var(--action);
+  background: var(--action-soft);
 }
 </style>

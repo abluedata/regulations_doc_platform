@@ -3,9 +3,7 @@ import {
   ChatDotRound,
   Clock,
   Collection,
-  DocumentCopy,
   Search,
-  SetUp,
   Setting,
   Star,
   UploadFilled,
@@ -52,8 +50,6 @@ const primaryNavigation: NavigationItem[] = [
 
 const reviewNavigation: NavigationItem[] = [
   { label: '文档上传', path: '/review/upload', icon: UploadFilled },
-  { label: '范本选择', path: '/review/templates', icon: DocumentCopy },
-  { label: '条款设置', path: '/review/rules', icon: SetUp },
   { label: '智能审查', path: '/review/console', icon: Search },
 ]
 

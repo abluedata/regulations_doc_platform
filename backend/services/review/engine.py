@@ -25,6 +25,7 @@ from .prompt import build_review_messages, prompt_template_hash
 
 DEFAULT_TEMPERATURE = 0.2
 DEFAULT_SEED = 20260815
+MAX_FINDINGS_PER_RULE = 5
 
 
 class ReviewEngineError(RuntimeError):
@@ -152,9 +153,16 @@ class ReviewEngine:
             matcher = _rule_matcher(rule)
             result = _run_matcher(blocks, matcher)
             if result.matched:
+                seen_blocks: set[str] = set()
                 for hit in result.hits:
                     if false_positive_reason(hit.quote):
                         continue
+                    block_key = str(hit.block_id or hit.block_index)
+                    if block_key in seen_blocks:
+                        continue
+                    seen_blocks.add(block_key)
+                    if len(seen_blocks) > MAX_FINDINGS_PER_RULE:
+                        break
                     findings.append(_finding_from_hit(ir, rule, hit))
                 continue
             if _llm_fallback_enabled(rule):
@@ -390,6 +398,7 @@ def _base_finding(
     finding_id = _stable_finding_id(document_id, version_id, rule_id, quote, block_id)
     return {
         "finding_id": finding_id,
+        "title": str(rule.get("name") or ""),
         "document_id": document_id,
         "document_version_id": version_id,
         "rule_id": rule_id,

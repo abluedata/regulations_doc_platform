@@ -408,7 +408,7 @@ p {
 }
 
 .app-content {
-  width: min(1280px, 100%);
+  width: min(1600px, 100%);
   min-width: 0;
   max-width: 100%;
   margin: 0 auto;

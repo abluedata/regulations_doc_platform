@@ -40,8 +40,20 @@ const html = computed(() => {
   }
   return template.innerHTML
 })
+function onAnchorClick(event: MouseEvent) {
+  // 拦截链接默认导航：避免裸网址 autolink（如 www.gsxt.gov.cn 相对路径）
+  // 触发 SPA 内路由跳转/页面重定向；干净的外链改新标签页打开。
+  const target = (event.target as Element | null)?.closest?.('a')
+  if (!target) return
+  event.preventDefault()
+  const href = target.getAttribute('href') || ''
+  const clean = (/^https?:\/\//i.test(href) || /^mailto:/i.test(href)) && !href.includes('%')
+  if (clean) {
+    window.open(href, '_blank', 'noopener,noreferrer')
+  }
+}
 </script>
 
 <template>
-  <div class="safe-markdown" v-html="html" />
+  <div class="safe-markdown" v-html="html" @click="onAnchorClick" />
 </template>

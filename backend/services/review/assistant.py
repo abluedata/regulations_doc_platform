@@ -34,7 +34,20 @@ class ReviewAssistant:
             if request_id in self._stopped:
                 raise InterruptedError("request cancelled")
             scope = DocumentScope(str(conversation["document_id"]), str(conversation["document_version_id"]))
-            result = self.answerer(str(body.get("message") or "").strip(), scope, str(conversation.get("filename") or ""))
+            history = [dict(item) for item in (body.get("history") or []) if isinstance(item, dict)]
+            finding = None
+            if body.get("finding_id"):
+                try:
+                    finding = self.store.find_finding(str(body["finding_id"]))
+                except KeyError:
+                    finding = None
+            result = self.answerer(
+                str(body.get("message") or "").strip(),
+                scope,
+                str(conversation.get("filename") or ""),
+                history=history,
+                finding=finding,
+            )
             if request_id in self._stopped:
                 raise InterruptedError("request cancelled")
             events.append(sse("status", {"request_id": request_id, "type": "generating"}))

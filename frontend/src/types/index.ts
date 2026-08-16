@@ -119,6 +119,9 @@ export interface ReviewClause {
   priority?: 'high'
   threshold?: string
   disabled?: boolean
+  category?: string
+  severity?: 'low' | 'medium' | 'high'
+  version?: number
 }
 
 export interface ReviewRisk {

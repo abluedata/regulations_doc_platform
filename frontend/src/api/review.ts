@@ -15,6 +15,7 @@ export interface ReviewRule {
   severity: 'low' | 'medium' | 'high'
   definition: Record<string, unknown>
   status: string
+  version?: number
   llm_fallback?: boolean
 }
 
@@ -71,6 +72,7 @@ export interface ReviewJob {
   result_revision: number
   decision_revision: number
   snapshot: {
+    batch_id?: string
     template_version_id?: string | null
     rule_version_ids?: string[]
     version_tuple?: Record<string, unknown>
@@ -103,6 +105,47 @@ export function createRule(payload: {
   llm_fallback?: boolean
 }) {
   return http.post<ReviewRule>('/review/rules', payload)
+}
+
+export function updateRule(ruleVersionId: string, payload: {
+  name: string
+  category?: string
+  severity?: 'low' | 'medium' | 'high'
+  definition?: Record<string, unknown>
+}) {
+  // 修改规则产生新版本：旧版本保持不可变，历史任务继续引用原快照
+  return http.put<ReviewRule>(`/review/rules/${ruleVersionId}`, payload)
+}
+
+export interface ReviewRuleSelection {
+  rule_version_id: string
+  enabled: boolean
+  overrides: Record<string, unknown>
+}
+
+export interface ReviewConfiguration {
+  id: string
+  name: string
+  rule_selections: ReviewRuleSelection[]
+  sensitivity: number
+  analysis_profile_id: 'accurate' | 'fast'
+  marking_mode: 'standard' | 'high_only'
+  revision: number
+  updated_at?: string
+}
+
+export function listConfigurations(params?: Record<string, unknown>) {
+  return http.get<ReviewPage<ReviewConfiguration>>('/review/configurations', { params })
+}
+
+export function createConfiguration(payload: {
+  name: string
+  rule_selections: ReviewRuleSelection[]
+  sensitivity: number
+  analysis_profile_id: 'accurate' | 'fast'
+  marking_mode: 'standard' | 'high_only'
+}) {
+  return http.post<ReviewConfiguration>('/review/configurations', payload)
 }
 
 export function createTemplate(payload: {
@@ -145,8 +188,10 @@ export function startAnalysis(payload: {
   sensitivity: number
   analysis_profile_id: 'accurate' | 'fast'
   marking_mode: 'standard' | 'high_only'
+  configuration_id?: string | null
 }, idempotencyKey: string) {
-  return http.post<ReviewJob>('/review/analysis-jobs', payload, { headers: { 'Idempotency-Key': idempotencyKey } })
+  // 分析含模型建议生成，超时放宽至 120s；任务在服务端持久化，超时后仍可轮询恢复
+  return http.post<ReviewJob>('/review/analysis-jobs', payload, { headers: { 'Idempotency-Key': idempotencyKey }, timeout: 120000 })
 }
 
 export function getAnalysisJob(jobId: string) {

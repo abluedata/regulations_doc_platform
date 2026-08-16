@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { ChatDotRound, Delete, Promotion } from '@element-plus/icons-vue'
+import SafeMarkdown from '@/components/SafeMarkdown.vue'
 import type { ReviewRisk } from '@/types'
 import { useReviewStore } from '@/stores/review'
 import { getActivePinia } from 'pinia'
@@ -39,12 +40,60 @@ const messages = ref<AssistantMessage[]>([
   },
 ])
 
+/** 会话历史持久化：按任务+文档保存，重载/重定向后恢复，避免历史丢失 */
+const HISTORY_MAX = 50
+const storageKey = computed(() => `review-assistant:${store?.analysisJobId ?? 'none'}`)
+
+function persistHistory() {
+  try {
+    const payload = {
+      messages: messages.value.filter((item) => item.content && !item.status).slice(-HISTORY_MAX),
+      selectedMembershipId: selectedMembershipId.value,
+      conversations: Object.fromEntries(conversationByDocument.entries()),
+      savedAt: Date.now(),
+    }
+    localStorage.setItem(storageKey.value, JSON.stringify(payload))
+  } catch {
+    // 存储不可用时静默降级（内存会话仍然可用）
+  }
+}
+
+function restoreHistory() {
+  try {
+    const raw = localStorage.getItem(storageKey.value)
+    if (!raw) return
+    const data = JSON.parse(raw) as {
+      messages?: AssistantMessage[]
+      selectedMembershipId?: string
+      conversations?: Record<string, string>
+    }
+    if (Array.isArray(data.messages) && data.messages.length) {
+      messages.value = data.messages.filter((item) => item.content && !item.error).slice(-HISTORY_MAX)
+      nextMessageId.value = Math.max(...messages.value.map((item) => item.id)) + 1
+    }
+    if (typeof data.selectedMembershipId === 'string' && data.selectedMembershipId) {
+      selectedMembershipId.value = data.selectedMembershipId
+    }
+    if (data.conversations && typeof data.conversations === 'object') {
+      for (const [key, value] of Object.entries(data.conversations)) {
+        if (typeof value === 'string') conversationByDocument.set(key, value)
+      }
+    }
+  } catch {
+    // 损坏的历史数据直接忽略
+  }
+}
+
 const suggestions = ['为什么被判定为风险？', '建议如何修改？', '与标准模板有什么差异？']
 const contextLabel = computed(() =>
   selectedDocument.value ? `当前文档 · ${selectedDocument.value.name}` : '尚未选择可问答文档',
 )
 const readyDocuments = computed(() => store?.files.filter((file) => file.status === 'ready') ?? [])
 const selectedDocument = computed(() => readyDocuments.value.find((file) => file.id === selectedMembershipId.value))
+
+onMounted(restoreHistory)
+watch(() => messages.value, persistHistory, { deep: true })
+watch(selectedMembershipId, persistHistory)
 
 async function sendQuestion(question = input.value) {
   const normalized = question.trim()
@@ -67,7 +116,11 @@ async function sendQuestion(question = input.value) {
       }
       await streamReviewAssistant(conversationId, {
         request_id: crypto.randomUUID(), message: normalized, finding_id: props.risk?.id,
-        history: messages.value.slice(0, -2).map(({ role, content }) => ({ role, content })),
+        // 只携带真实对话历史：排除欢迎语/错误占位，避免污染模型上下文
+        history: messages.value
+          .slice(0, -2)
+          .filter((item) => item.content && !item.error && !item.content.startsWith('请选择当前任务中的一份文档'))
+          .map(({ role, content }) => ({ role, content })),
       }, {
         onStatus: (data) => { answer.status = data.type === 'retrieving' ? '正在检索当前文档' : '正在组织回答' },
         onToken: (data) => { answer.status = ''; answer.content += String(data.content ?? '') },
@@ -129,9 +182,16 @@ function clearMessages() {
         :data-role="message.role"
       >
         <span class="assistant-message__label">{{ message.role === 'assistant' ? '助手' : '你' }}</span>
-        <p :data-test="message.refused ? 'assistant-refusal' : undefined" :class="{ 'assistant-message__refusal': message.refused, 'assistant-message__error': message.error }">
-          <span v-if="message.status" class="assistant-status">{{ message.status }}</span>{{ message.content }}<span v-if="isStreaming && message === messages.at(-1)" class="sr-only">正在生成回答</span>
-        </p>
+        <SafeMarkdown
+          v-if="message.role === 'assistant'"
+          class="assistant-message__content"
+          :data-test="message.refused ? 'assistant-refusal' : undefined"
+          :class="{ 'assistant-message__refusal': message.refused, 'assistant-message__error': message.error }"
+          :content="message.content"
+        >
+          <span v-if="message.status" class="assistant-status">{{ message.status }}</span>
+        </SafeMarkdown>
+        <p v-else class="assistant-message__content" :data-role="message.role">{{ message.content }}</p>
         <div v-if="message.citations?.length" class="assistant-citations" aria-label="回答引用">
           <button v-for="citation in message.citations" :key="citation.citation_id" data-test="assistant-citation" type="button" @click="emit('locate', citation)">
             <span>{{ citation.filename }}{{ citation.locator.page_number ? ` · 第 ${citation.locator.page_number} 页` : '' }}</span>
@@ -368,6 +428,32 @@ function clearMessages() {
 .assistant-status { display: block; color: var(--ink-muted); }
 .assistant-message__refusal { border: 1px solid var(--warning-outline); background: #fff8ed !important; }
 .assistant-message__error { border: 1px solid var(--danger-outline); background: var(--danger-soft) !important; }
+
+/* 助手回复中的 markdown 表格：有边框、可横向滚动，不撑开面板 */
+.assistant-message__content :deep(table) {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 8px 0;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.assistant-message__content :deep(th),
+.assistant-message__content :deep(td) {
+  min-width: 64px;
+  padding: 6px 8px;
+  border: 1px solid var(--outline-soft, #d9dee7);
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.assistant-message__content :deep(th) {
+  background: var(--action-soft, #eef3fb);
+  font-weight: 700;
+}
+.assistant-message__content :deep(p) { margin: 0 0 6px; }
+.assistant-message__content :deep(ul),
+.assistant-message__content :deep(ol) { margin: 4px 0 8px; padding-left: 18px; }
 .assistant-citations { display: flex; flex-direction: column; gap: 6px; }
 .assistant-citations button { display: flex; min-height: 44px; flex-direction: column; gap: 3px; padding: 8px 10px; border: 1px solid var(--outline); border-radius: var(--radius-sm); color: var(--action); background: var(--surface); text-align: left; cursor: pointer; }
 .assistant-citations q { max-width: 42ch; color: var(--ink-muted); font-size: 11px; overflow-wrap: anywhere; }

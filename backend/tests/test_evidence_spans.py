@@ -128,6 +128,141 @@ class EvidenceSpansTestCase(unittest.TestCase):
         self.assertIsNone(evidence.find_span_for_quote(spans, "不存在的引用"))
         self.assertIsNone(evidence.find_span_for_quote(spans, ""))
 
+    def test_find_span_for_quote_prefers_expected_page_and_tightest_span(self):
+        spans = [
+            # 目录页整行（大框噪音）
+            {"text": "第一章 公开招标..................投标保证金............", "bbox": [100, 100, 900, 900], "page": 2},
+            # 正文页精确短 span
+            {"text": "（4）投标保证金；", "bbox": [157, 297, 299, 315], "page": 20},
+            # 正文页中等 span
+            {"text": "3.4.1 投标保证金金额与递交方式详见前附表。", "bbox": [114, 466, 870, 504], "page": 20},
+        ]
+        # 无页码偏好：最短包含 span 优先（避免目录大框）
+        self.assertEqual(evidence.find_span_for_quote(spans, "投标保证金")["page"], 20)
+        # 指定页码：优先该页
+        self.assertEqual(
+            evidence.find_span_for_quote(spans, "投标保证金", page_number=20)["bbox"],
+            [157, 297, 299, 315],
+        )
+        # 指定页码但该页无匹配 → 回退全局最精
+        self.assertEqual(
+            evidence.find_span_for_quote(spans, "投标保证金", page_number=3)["page"], 20
+        )
+
+    def test_refine_quote_bbox_narrows_to_character_level(self):
+        class FakePage:
+            width = 595.0
+            height = 842.0
+
+        class FakePdf:
+            pages = [FakePage()]
+
+        doc_id = "doc-refine"
+        evidence._pdf_cache[doc_id] = FakePdf()
+        evidence._pdf_cache_order.append(doc_id)
+        text = "（4）投标保证金；"
+        chars = []
+        for index, char in enumerate(text):
+            x0 = 93.0 + index * 18.0
+            chars.append(
+                {"text": char, "x0": x0, "x1": x0 + 17.0, "top": 253.1, "bottom": 263.6}
+            )
+        evidence._page_words_cache[("chars", doc_id, 1)] = chars
+        try:
+            result = evidence.refine_quote_bbox(doc_id, 1, "投标保证金")
+        finally:
+            evidence._pdf_cache.clear()
+            evidence._pdf_cache_order.clear()
+            evidence._page_words_cache.clear()
+        self.assertIsNotNone(result)
+        x0, y0, x1, y1 = result or [0, 0, 0, 0]
+        # quote 在 text[3:8]，x 起点 93+3*18，终点 93+7*18+17
+        self.assertAlmostEqual(x0, (93.0 + 3 * 18.0) / 595 * 1000, delta=2)
+        self.assertAlmostEqual(x1, (93.0 + 7 * 18.0 + 17.0) / 595 * 1000, delta=2)
+        self.assertAlmostEqual(y0, 253.1 / 842 * 1000, delta=2)
+        self.assertAlmostEqual(y1, 263.6 / 842 * 1000, delta=2)
+
+    def test_refine_quote_bbox_rejects_cross_line_inverted_box(self):
+        """跨行匹配必须被拒绝：不能返回 x0 > x1 的倒置矩形。"""
+        class FakePage:
+            width = 595.0
+            height = 842.0
+
+        class FakePdf:
+            pages = [FakePage()]
+
+        doc_id = "doc-refine-xline"
+        evidence._pdf_cache[doc_id] = FakePdf()
+        evidence._pdf_cache_order.append(doc_id)
+        # 第一行行尾 + 第二行行首，拼接后包含 quote，但不在同一行
+        chars = [
+            {"text": "投标保证", "x0": 700.0, "x1": 800.0, "top": 100.0, "bottom": 112.0},
+            {"text": "金", "x0": 70.0, "x1": 90.0, "top": 120.0, "bottom": 132.0},
+        ]
+        evidence._page_words_cache[("chars", doc_id, 1)] = chars
+        try:
+            result = evidence.refine_quote_bbox(doc_id, 1, "投标保证金")
+        finally:
+            evidence._pdf_cache.clear()
+            evidence._pdf_cache_order.clear()
+            evidence._page_words_cache.clear()
+        self.assertIsNone(result)
+
+    def test_locate_quote_span_in_block_finds_correct_repeated_instance(self):
+        spans = [
+            {"text": "3.3.1 投标有效期", "bbox": [100, 100, 900, 120], "page": 20},
+            {"text": "3.3.3 出现特殊情况需要延长投标有效期的……其投标保证金的有效期……", "bbox": [114, 682, 870, 704], "page": 20},
+            {"text": "（4）投标保证金；", "bbox": [157, 297, 299, 315], "page": 20},
+            {"text": "3.4.1 投标保证金金额与递交方式详见前附表。", "bbox": [114, 466, 870, 504], "page": 20},
+        ]
+        block_text = "3.3.3 出现特殊情况需要延长投标有效期的……其投标保证金的有效期……"
+        span = evidence.locate_quote_span_in_block(spans, block_text, "投标保证金")
+        self.assertIsNotNone(span)
+        self.assertEqual(span["bbox"], [114, 682, 870, 704])
+        # 另一 block 内的重复文本 → 定位到另一实例
+        span2 = evidence.locate_quote_span_in_block(spans, "3.4.1 投标保证金金额与递交方式详见前附表。", "投标保证金")
+        self.assertEqual(span2["bbox"], [114, 466, 870, 504])
+        # 找不到时返回 None
+        self.assertIsNone(evidence.locate_quote_span_in_block(spans, "完全无关的文本", "投标保证金"))
+
+    def test_enrich_anchor_refines_long_span_with_pdfplumber(self):
+        """span 远长于 quote 时，富化应裁剪到字符级 bbox。"""
+        doc_id = "doc-enrich-refine"
+        finding = {
+            "document_id": doc_id,
+            "document_version_id": VALID_VERSION_ID,
+            "quote": "投标保证金",
+            "evidence_anchor": {
+                "kind": "pdf",
+                "document_id": doc_id,
+                "document_version_id": VALID_VERSION_ID,
+                "precision": "page",
+                "page_number": 20,
+                "coordinate_space": "normalized-1000-top-left",
+                "rects": [],
+            },
+        }
+        long_span = {
+            "text": "3.4.1 投标保证金金额与递交方式详见前附表，其余要求以正文为准。",
+            "bbox": [114, 466, 870, 504],
+            "page": 20,
+        }
+        with mock.patch.object(
+            evidence,
+            "ensure_doc_evidence_spans",
+            return_value={"spans": [long_span]},
+        ), mock.patch.object(
+            evidence,
+            "refine_quote_bbox",
+            return_value=[157.0, 297.0, 299.0, 315.0],
+        ) as refine:
+            enriched = evidence.enrich_evidence_anchor(finding)
+        refine.assert_called_once_with(doc_id, 20, "投标保证金", span_bbox=[114.0, 466.0, 870.0, 504.0])
+        self.assertEqual(
+            enriched["evidence_anchor"]["rects"][0],
+            {"page": 20, "x0": 157.0, "y0": 297.0, "x1": 299.0, "y1": 315.0, "space": "normalized-1000-top-left"},
+        )
+
     # ── write / load ────────────────────────────────────────
 
     def test_write_and_load_roundtrip(self):
@@ -447,10 +582,10 @@ class FindingsEvidenceAnchorTests(unittest.TestCase):
         self.assertEqual(anchor["precision"], "rect")
         self.assertEqual(anchor["validation_status"], "exact")
         self.assertEqual(anchor["page_number"], 6)
-        self.assertEqual(anchor["coordinate_space"], "pdf-pt")
+        self.assertEqual(anchor["coordinate_space"], "normalized-1000-top-left")
         self.assertEqual(
             anchor["rects"],
-            [{"page": 6, "x0": 115.0, "y0": 529.0, "x1": 877.0, "y1": 601.0, "space": "pdf-pt"}],
+            [{"page": 6, "x0": 115.0, "y0": 529.0, "x1": 877.0, "y1": 601.0, "space": "normalized-1000-top-left"}],
         )
 
     def test_findings_endpoint_keeps_degraded_when_no_spans(self):

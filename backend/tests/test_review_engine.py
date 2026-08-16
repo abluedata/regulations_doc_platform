@@ -253,6 +253,44 @@ class ReviewEngineTests(unittest.TestCase):
         self.assertEqual(result["snapshot"]["usage"], {"prompt_tokens": 10, "completion_tokens": 8})
         self.assertEqual(result["snapshot"]["finish_reason"], "stop")
 
+    def test_deterministic_findings_deduped_per_block_and_capped_per_rule(self):
+        """同一规则在同一块只保留一条；每规则最多 5 条，避免关键词高频重复产生噪音。"""
+        blocks = [
+            {
+                "block_id": f"b{index}",
+                "type": "paragraph",
+                "page_start": 1,
+                "text": f"第{index}条：投标保证金条款。",
+                "locator": {
+                    "kind": "pdf",
+                    "page_number": 1,
+                    "origin": "top_left",
+                    "coordinate_system": "normalized_0_1000",
+                    "rects": [{"x0": 0, "y0": 0, "x1": 10, "y1": 10}],
+                    "precision": "exact",
+                },
+            }
+            for index in range(8)
+        ]
+        blocks[0]["text"] = "投标保证金 与 投标保证金。"  # 同块内重复出现
+        ir = {"doc_id": "doc-3", "document_version_id": "ver-3", "blocks": blocks}
+        rule = {
+            "rule_id": "bid-bond",
+            "name": "投标保证金",
+            "severity": "medium",
+            "definition": {
+                "matcher": {"text_pattern": [{"kind": "keyword", "pattern": "投标保证金"}]}
+            },
+        }
+
+        result = ReviewEngine(llm_client=None).analyze_document(ir, [rule], allow_llm=False)
+        findings = result["findings"]
+
+        self.assertLessEqual(len(findings), 5)
+        block_ids = [finding["block_id"] for finding in findings]
+        self.assertEqual(len(set(block_ids)), len(block_ids), "同一块只保留一条发现")
+        self.assertTrue(all(finding["quote"] == "投标保证金" for finding in findings))
+
 
 class JobRunnerTests(unittest.TestCase):
     def test_llm_unavailable_completes_degraded_with_deterministic_findings(self):
